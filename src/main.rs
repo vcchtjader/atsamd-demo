@@ -41,6 +41,59 @@ mod app {
         );
         // Get the pins
         let pins = Pins::new(device.PORT);
+
+        // Route the DFLL clock source to `GCLK5`
+
+        // Get the `Dfll` from the `Clocks` struct. It is already wrapped in a
+        // `Source` and has one lock, because it is used as the main clock at
+        // reset.
+        let dfll = clocks.sources.dfll;
+
+        //// Get `Gclk` 0 from the `Clocks` struct. It is already enabled, using the
+        //// `Dfll` as its source.
+        let gclk0 = clocks.gclks.gclk0;
+
+        // Take the `GclkConfig` for GCLK 5 from the `Clocks` struct
+        let gclk5 = clocks.gclks.gclk5;
+        // Use the `DFLL` as the `Source` for the `GclkConfig`. Doing so locks
+        // the `DFLL` `Source` once more. It can't be safely modified until that lock is
+        // released.
+        let (gclk5, _dfll) = gclk5.set_source(dfll);
+        // Set the `GclkConfig` divider to 24, which yields a 2 MHz output.
+        // Enable the `GclkConfig` to produce a `Gclk`.
+        let gclk5 = gclk5.div(gclk::Div::Div(24)).enable();
+
+        // Take the peripheral clock token (`PclkToken`) for DPLL0 from the `Clocks`
+        // struct.
+        let pclk_dpll0 = clocks.pclks.dpll0;
+        // Enable the `PclkToken` using `Gclk` 5 to produce a `Pclk`. Doing so also
+        // locks `Gclk` 5, which can't be safely disabled until the lock is
+        // released.
+        let (dpll0_src, gclk5) = pclk_dpll0.enable(gclk5);
+        //// Get the `DpllConfig` for DPLL 0 from the `Clocks` struct
+        let dpll0 = clocks.sources.dpll0;
+        //// Use the DPLL0 `Pclk` to set the source for DPLL0. The `Pclk` is consumed.
+        //// Set the loop divider to 60, which will yield a 120 MHz clock. Enable the
+        //// `DpllConfig` to produce a `Dpll`.
+        let dpll0 = dpll0
+          .set_gclk_source(dpll0_src)
+          .set_loop_div(60, 0);
+          //.enable();
+        //
+        // Since the divider for `Gclk` is not set when compiled in --release mode
+        // 48MHz * 60 > 200 => panic :(
+        //
+        // Thus not enabled for now
+        //
+        // Package the `Dpll` as a clock `Source`
+        //let _dpll0 = Source::new(dpll0);
+
+        //// Enable output pin for `GCLK` 5, outputs 2 MHz
+        let gclk_out5 = clocks.sources.gclk_io.gclk_out5;
+        let (_gclk_out5, _gclk5) = gclk_out5.enable(gclk5, pins.pb11, false);
+
+        // Original lib.rs
+
         // Pin PA27 is a clock input for GCLK 1, and it has a 24 MHz oscillator.
         // Get the corresponding `GclkInToken` from the `Clocks` struct
         //let gclk_in1 = clocks.sources.gclk_io.gclk_in1;
@@ -82,7 +135,7 @@ mod app {
 
         //// Get `Gclk` 0 from the `Clocks` struct. It is already enabled, using the
         //// `Dfll` as its source.
-        let gclk0 = clocks.gclks.gclk0;
+        //let gclk0 = clocks.gclks.gclk0;
         //// Swap the clock `Source` for `Gclk` 0 from the `Dfll` to `Dpll` 0. Doing
         //// so is inherently unsafe, because you are altering a running clock.
         //// The `Dfll` lock is released, so it can now be modified. The `Dpll` 0 is
