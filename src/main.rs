@@ -6,7 +6,7 @@
 use panic_halt as _;
 
 use atsamd_hal::{
-    clock::v2::{gclk, xosc::*, DpllConfig, GclkConfig, GclkOut, Tokens},
+    clock::v2::{gclk, xosc::*, xosc32k::*, DpllConfig, GclkConfig, GclkOut, Tokens},
     gpio::v2::Pins,
     time::U32Ext,
 };
@@ -23,7 +23,7 @@ mod app {
         let mut device = cx.device;
 
         // Get the clocks & tokens
-        let (gclk0, dfll, tokens) = Tokens::new(
+        let (gclk0, dfll, osculp32k, tokens) = Tokens::new(
             device.OSCCTRL,
             device.OSC32KCTRL,
             device.GCLK,
@@ -45,6 +45,16 @@ mod app {
             //.set_crystal_current(CrystalCurrent::BaseFreq)
             .enable();
 
+        // Enable external 32k-oscillator
+        let xosc32k_config =
+            XOsc32kConfig::from_crystal(tokens.sources.xosc32k, pins.pa00, pins.pa01);
+        let xosc32k_config = xosc32k_config;
+        let xosc32k = xosc32k_config.enable_32k(true).enable_1k(true).enable();
+
+        // Test deconfiguring and reconstructing the osculp32k
+        let osculp32k_config = osculp32k.disable();
+        let osculp32k = osculp32k_config.enable();
+
         // Configure DPLL0 to 100 MHz
         let (dpll0, xosc0) = DpllConfig::from_xosc(tokens.sources.dpll0, xosc0);
         let dpll0 = dpll0.set_source_div(1).set_loop_div(50, 0).enable();
@@ -55,6 +65,7 @@ mod app {
 
         // Change Gclk0 from Dfll to Dpll0, MCLK = 100 MHz
         let (_gclk0, _dfll, dpll0) = unsafe { gclk0.swap(dfll, dpll0) };
+
 
         //
         // Gckl1
@@ -67,7 +78,7 @@ mod app {
 
         // Output Gclk1 on pin PB15
         let gclk_out1 = tokens.sources.gclk_io.gclk_out1;
-        let (_gclk_out1, gclk1) = GclkOut::new(gclk_out1, pins.pb15, gclk1, false);
+        let (_gclk_out1, _gclk1) = GclkOut::new(gclk_out1, pins.pb15, gclk1, false);
 
         //
         // Gckl2
@@ -97,13 +108,26 @@ mod app {
         // Gckl5
         //
 
-        // Configure gclk5 using GCLK1 as source to run at 200 kHz
-        let (gclk5, _gclk1) = GclkConfig::new(tokens.gclks.gclk5, gclk1);
-        let gclk5 = gclk5.div(gclk::Div::Div(4)).enable();
+        // Configure gclk5 using osculp32k as source to run at 32.768 kHz
+        let (gclk5, _osculp32k) = GclkConfig::new(tokens.gclks.gclk5, osculp32k);
+        let gclk5 = gclk5.div(gclk::Div::Div(0)).enable();
 
         // Output Gclk5 on pin PB11
         let gclk_out5 = tokens.sources.gclk_io.gclk_out5;
         let (_gclk_out5, _gclk5) = GclkOut::new(gclk_out5, pins.pb11, gclk5, false);
+
+        //
+        // Gckl6
+        //
+
+        // Configure gclk6 using xosc32k as source to run at 32.768 kHz
+        let (gclk6, _xosc32k) = GclkConfig::new(tokens.gclks.gclk6, xosc32k);
+        let gclk6 = gclk6.div(gclk::Div::Div(0)).enable();
+
+        // Output Gclk6 on pin PB20
+        let gclk_out6 = tokens.sources.gclk_io.gclk_out6;
+        let (_gclk_out6, _gclk6) = GclkOut::new(gclk_out6, pins.pb20, gclk6, false);
+
 
         // Setup frequency monitor
         //let freqm = Freqm::new(device.FREQM, &mut mclk);
