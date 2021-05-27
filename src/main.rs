@@ -51,7 +51,7 @@ mod app {
 
         // ----
         // Input for Gclk6 on pin PB20 (assumed frequency of 10 Mhz)
-        let gclk_in6 = GclkIn::enable(tokens.sources.gclk_io.gclk_in6, pins.pb20, 10.mhz());
+        let gclk_in6 = GclkIn::enable(tokens.sources.gclk_io.gclk_in6, pins.pb20, 2.mhz());
 
         let (gclk6, _gclk_in6) = gclk::Gclk::new(tokens.gclks.gclk6, gclk_in6);
         let gclk6 = gclk6.enable();
@@ -60,7 +60,7 @@ mod app {
 
         // Configure DPLL1 to 200 MHz
         let dpll1 = Dpll::from_pclk(tokens.sources.dpll1, pclk_dpll1);
-        let dpll1 = dpll1.set_source_div(1).set_loop_div(80, 0).enable();
+        let dpll1 = dpll1.set_source_div(1).set_loop_div(200, 0).enable();
 
         let (gclk1, dpll1) = gclk::Gclk::new(tokens.gclks.gclk1, dpll1);
         let gclk1 = gclk1.enable();
