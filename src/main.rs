@@ -39,7 +39,7 @@ mod app {
             Xosc::from_crystal(tokens.sources.xosc0, pins.pa14, pins.pa15, 8.mhz()).enable();
 
         // Enable external 32k-oscillator
-        let xosc32k = Xosc32k::from_crystal(tokens.sources.xosc32k, pins.pa00, pins.pa01).enable();
+        let xosc32k = Xosc32k::from_crystal(tokens.sources.xosc32k, pins.pa00, pins.pa01).enable_32k(true).enable();
 
         // Configure DPLL0 to 100 MHz
         let (dpll0, xosc0) = Dpll::from_xosc(tokens.sources.dpll0, xosc0);
@@ -105,12 +105,12 @@ mod app {
         //
 
         // Configure gclk6 using xosc32k as source to run at 32.768 kHz
-        //let (gclk6, _xosc32k) = gclk::Gclk::new(tokens.gclks.gclk6, xosc32k);
-        //let gclk6 = gclk6.div(gclk::GclkDiv::Div(0)).enable();
+        let (gclk6, _xosc32k) = gclk::Gclk::new(tokens.gclks.gclk6, xosc32k);
+        let gclk6 = gclk6.div(gclk::GclkDiv::Div(0)).enable();
 
         // Output Gclk6 on pin PB20
-        //let gclk_out6 = tokens.sources.gclk_io.gclk_out6;
-        //let (_gclk_out6, _gclk6) = GclkOut::enable(gclk_out6, pins.pb20, gclk6, false);
+        let gclk_out6 = tokens.sources.gclk_io.gclk_out6;
+        let (_gclk_out6, _gclk6) = GclkOut::enable(gclk_out6, pins.pb20, gclk6, false);
 
         (init::LateResources {}, init::Monotonics())
     }
