@@ -7,7 +7,14 @@ use panic_halt as _;
 
 use atsamd_hal::{
     clock::v2::{
-        gclk, retrieve_clocks, xosc::*, xosc32k::*, Dpll, Gclk1Div, GclkDiv, GclkIn, GclkOut, Pclk,
+        dpll::Dpll,
+        gclk,
+        gclk::{Gclk1Div, GclkDiv},
+        gclkio::{GclkIn, GclkOut},
+        pclk::Pclk,
+        retrieve_clocks,
+        xosc::*,
+        xosc32k::*,
     },
     gpio::v2::Pins,
     time::U32Ext,
