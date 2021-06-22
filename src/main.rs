@@ -10,6 +10,7 @@ use atsamd_hal::{
     clock::v2::{
         dpll::Dpll, gclk, gclkio::GclkOut, pclk::Pclk, retrieve_clocks, xosc::*, xosc32k::*,
     },
+    freqm::Freqm,
     gpio::v2::Pins,
     time::U32Ext,
 };
@@ -68,34 +69,14 @@ mod app {
         // Keep in mind in case of problems.
         let (freqm_ref, _) = Pclk::enable(tokens.pclks.freqm_ref, gclk1);
         let (freqm_msr, _) = Pclk::enable(tokens.pclks.freqm_msr, gclk0);
-        let apb_clk_freqm = tokens.apbs.freqm.enable();
-        // Reset
-        device.FREQM.ctrla.modify(|_, w| w.swrst().set_bit());
-        while device.FREQM.syncbusy.read().swrst().bit() {}
-        // Clear overflow
-        device.FREQM.status.write(|w| w.ovf().set_bit());
-        // Disable before setting up the REFNUM
-        device.FREQM.ctrla.modify(|_, w| w.enable().bit(false));
-        while device.FREQM.syncbusy.read().enable().bit() {}
+
+        let mut freqm = Freqm::new(device.FREQM, tokens.apbs.freqm.enable());
+
         unsafe {
-            // Set REFNUM
-            device.FREQM.cfga.modify(|_, w| w.refnum().bits(refnum));
-        }
-        device.FREQM.ctrla.modify(|_, w| w.enable().bit(true));
-        while device.FREQM.syncbusy.read().enable().bit() {}
-        // Start the measurement
-        device.FREQM.ctrlb.write(|w| w.start().set_bit());
-        // Block until ready
-        while device.FREQM.status.read().busy().bit() {}
-        // Check if overflow occured
-        if device.FREQM.status.read().ovf().bit() {
-            // :(
-            loop {}
-        }
-        let value = device.FREQM.value.read().bits();
-        unsafe {
-            FINAL_MEASUREMENT =
-                ((value as f32) / (refnum as f32) * (freqm_ref.freq().0 as f32)) as u32;
+            FINAL_MEASUREMENT = match freqm.measure_frequency(&freqm_msr, &freqm_ref, refnum) {
+                Ok(v) => v.0,
+                Err(_) => unimplemented!()
+            }
         }
 
         (init::LateResources {}, init::Monotonics())
