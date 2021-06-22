@@ -2,19 +2,14 @@
 // #![deny(warnings)]
 #![no_main]
 #![no_std]
+#![allow(unused_variables)]
 
 use panic_halt as _;
 
+use cortex_m::asm::bkpt;
 use atsamd_hal::{
     clock::v2::{
-        dpll::Dpll,
-        gclk,
-        gclk::{Gclk1Div, GclkDiv},
-        gclkio::{GclkIn, GclkOut},
-        pclk::Pclk,
-        retrieve_clocks,
-        xosc::*,
-        xosc32k::*,
+        dpll::Dpll, gclk, gclkio::GclkOut, pclk::Pclk, retrieve_clocks, xosc::*, xosc32k::*,
     },
     gpio::v2::Pins,
     time::U32Ext,
@@ -34,7 +29,7 @@ mod app {
         let mut device = cx.device;
 
         // Get the clocks & tokens
-        let (gclk0, dfll, osculp32k, tokens) = retrieve_clocks(
+        let (gclk0, dfll, _osculp32k, tokens) = retrieve_clocks(
             device.OSCCTRL,
             device.OSC32KCTRL,
             device.GCLK,
@@ -47,22 +42,6 @@ mod app {
 
         // Enable pin PA14 and PA15 as an external source for XOSC0 at 8 MHz
         let xosc0 = Xosc::from_crystal(tokens.xosc0, pins.pa14, pins.pa15, 8.mhz()).enable();
-
-        // Take DFLL 48 MHz, divide down to 2 MHz for Gclk1
-        let (gclk1, dfll) = gclk::Gclk::new(tokens.gclks.gclk1, dfll);
-        let gclk1 = gclk1.div(Gclk1Div::Div(24)).enable();
-
-        // Enable output for 2 MHz clock on PB15
-        let (_gclk_out1, _gclk1) =
-            GclkOut::enable(tokens.gclk_io.gclk_out1, pins.pb15, gclk1, false);
-
-        // Either from pclk or xosc0
-        // =========================
-
-        // Setup DPLL0 using pclk of GCLK1
-        //let (pclk_dpll0, _gclk1) = Pclk::enable(tokens.pclks.dpll0, gclk1);
-        //let pclk_dpll0 = Dpll::from_pclk(tokens.dpll0, pclk_dpll0);
-        //let dpll0 = pclk_dpll0.set_loop_div(50, 0).enable();
 
         // Configure DPLL0 to 100 MHz fed from Xosc0
         let (dpll0, _xosc0) = Dpll::from_xosc(tokens.dpll0, xosc0, 1);
@@ -80,55 +59,46 @@ mod app {
         //// Change Gclk0 from Dfll to Dpll0, MCLK = 100 MHz
         let (gclk0, _dfll, _dpll0) = gclk0.swap(dfll, dpll0);
 
-        //// Output Gclk0 on pin PB14
-        let (_gclk_out0, _gclk0) =
-            GclkOut::enable(tokens.gclk_io.gclk_out0, pins.pb14, gclk0, false);
-
-        //// ----
-        //// Input for Gclk3 on pin PB17 (assumed frequency of 2 MHz)
-        let gclk_in3 = GclkIn::enable(tokens.gclk_io.gclk_in3, pins.pb17, 2.mhz());
-        let (gclk3, _gclk_in3) = gclk::Gclk::new(tokens.gclks.gclk3, gclk_in3);
-        let gclk3 = gclk3.enable();
-
-        // Setup DPLL1 with input from Gclk3, fed from external 2 MHz signal on pin PB17
-        let (pclk_dpll1, _gclk3) = Pclk::enable(tokens.pclks.dpll1, gclk3);
-        let dpll1 = Dpll::from_pclk(tokens.dpll1, pclk_dpll1);
-        // Configure DPLL1 to run at 2 * 50 = 100 MHz
-        let dpll1 = dpll1.set_loop_div(50, 0).enable();
-
-        // Output DPLL1 on PB20 via Gclk6, divided by 200 resulting in 0.5 MHz output
-        let (gclk6, _dpll1) = gclk::Gclk::new(tokens.gclks.gclk6, dpll1);
-        let gclk6 = gclk6.div(GclkDiv::Div(200)).enable();
-        let (_gclk_out6, _gclk6) =
-            GclkOut::enable(tokens.gclk_io.gclk_out6, pins.pb20, gclk6, false);
-
-        // ----
         // Enable external 32k-oscillator
         let xosc32k = Xosc32k::from_crystal(tokens.xosc32k, pins.pa00, pins.pa01)
             .enable_32k(true)
             .enable();
 
-        // Xosc32k = 32kHz Expressed as MHz: >>> 32*1024/1000/1000 = 0.032768
-        // 100 / 0.032768 = 3051.7578125
-        //
-        // Missing 0.7578...
-        //
-        // Use fractional divider: x / 32 = 0.75..
-        // 24/32 = 0.75
-        //
-        // 3052 * (32*1024/1000/1000) = 100.007936
-        //let (dpll1, xosc32k) = Dpll::from_xosc32k(tokens.dpll1, xosc32k);
-        //let _dpll1 = dpll1.set_loop_div(3000, 24).enable();
+        let (gclk1, _) = gclk::Gclk::new(tokens.gclks.gclk1, xosc32k);
+        let gclk1 = gclk1.enable();
 
-        let (gclk2, _xosc32k) = gclk::Gclk::new(tokens.gclks.gclk2, xosc32k);
-        let gclk2 = gclk2.div(gclk::GclkDiv::Div(2)).enable();
-        let (_gclk_out2, _gclk2) =
-            GclkOut::enable(tokens.gclk_io.gclk_out2, pins.pb16, gclk2, false);
-
-        let (gclk5, _osculp32k) = gclk::Gclk::new(tokens.gclks.gclk5, osculp32k);
-        let gclk5 = gclk5.div(gclk::GclkDiv::Div(0)).enable();
-        let (_gclk_out5, _gclk5) =
-            GclkOut::enable(tokens.gclk_io.gclk_out5, pins.pb11, gclk5, false);
+        // FREQM
+        // User input:
+        let refnum: u8 = u8::MAX;
+        // Question: In VCC impl, Pclk setup occurs a little bit later.
+        // Keep in mind in case of problems.
+        let (freqm_ref, _) = Pclk::enable(tokens.pclks.freqm_ref, gclk1);
+        let (freqm_msr, _) = Pclk::enable(tokens.pclks.freqm_msr, gclk0);
+        let apb_clk_freqm = tokens.apbs.freqm.enable();
+        // Reset
+        bkpt();
+        device.FREQM.ctrla.modify(|_, w| w.swrst().set_bit());
+        // Clear overflow
+        device.FREQM.status.write(|w| w.ovf().set_bit());
+        // Disable before setting up the REFNUM
+        device.FREQM.ctrla.modify(|_, w| w.enable().bit(false));
+        unsafe {
+            // Set REFNUM
+            device.FREQM.cfga.modify(|_, w| w.refnum().bits(refnum));
+        }
+        device.FREQM.ctrla.modify(|_, w| w.enable().bit(true));
+        // Start the measurement
+        device.FREQM.ctrlb.write(|w| w.start().set_bit());
+        // Block until ready
+        while device.FREQM.status.read().busy().bit() {}
+        // Check if overflow occured
+        if device.FREQM.status.read().ovf().bit() {
+            // :(
+            loop {}
+        }
+        let value = device.FREQM.value.read().bits();
+        let final_measurement =
+            ((value as f32) / (refnum as f32) * (freqm_ref.freq().0 as f32)) as u32;
 
         (init::LateResources {}, init::Monotonics())
     }
