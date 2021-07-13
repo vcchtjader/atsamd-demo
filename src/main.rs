@@ -13,6 +13,7 @@ use atsamd_hal::{
         gclkio::{GclkIn, GclkOut},
         pclk::Pclk,
         retrieve_clocks,
+        rtc::*,
         xosc::*,
         xosc32k::*,
     },
@@ -24,8 +25,7 @@ use rtic::app;
 
 #[app(device = atsamd_hal::target_device, peripherals = true )]
 mod app {
-
-    //use cortex_m::interrupt::disable;
+    use cortex_m::interrupt::disable;
 
     use super::*;
 
@@ -104,9 +104,34 @@ mod app {
 
         // ----
         // Enable external 32k-oscillator
-        let xosc32k = Xosc32k::from_crystal(tokens.xosc32k, pins.pa00, pins.pa01)
-            .enable_32k(true)
-            .enable();
+        let xosc32k =
+            Xosc32k::from_crystal(tokens.xosc32k, pins.pa00, pins.pa01).set_gain_mode(true);
+        let xosc32k = xosc32k.set_start_up(StartUp32k::CYCLE2048);
+        let xosc32k = xosc32k.set_on_demand(false).set_run_standby(true);
+        let xosc32k = xosc32k.enable();
+        let xosc32k = xosc32k.activate_1k();
+        let xosc32k = xosc32k.activate_32k();
+        cortex_m::asm::bkpt();
+        let xosc32k = xosc32k.deactivate_1k();
+        cortex_m::asm::bkpt();
+        let xosc32k = xosc32k.activate_1k();
+        let xosc32k = xosc32k.disable();
+        let (xosc32ktoken, pinpa00, _pinpa01) = xosc32k.free();
+
+        let xosc32k = Xosc32k::from_clock(xosc32ktoken, pinpa00);
+        let xosc32k = xosc32k.enable();
+        let xosc32k = xosc32k.activate_32k();
+
+        let xosc32k = set_rtc_clock_32k(xosc32k);
+        //let xosc32k = xosc32k.disable();
+        let xosc32k = unset_rtc_clock_32k(xosc32k);
+
+        let xosc32k = xosc32k.activate_1k();
+        let xosc32k = set_rtc_clock_1k(xosc32k);
+        //let xosc32k = xosc32k.disable();
+        let xosc32k = unset_rtc_clock_1k(xosc32k);
+
+        let (_gclk11, xosc32k) = gclk::Gclk::new(tokens.gclks.gclk11, xosc32k);
 
         // Xosc32k = 32kHz Expressed as MHz: >>> 32*1024/1000/1000 = 0.032768
         // 100 / 0.032768 = 3051.7578125
@@ -124,6 +149,13 @@ mod app {
         let gclk2 = gclk2.div(gclk::GclkDiv::Div(2)).enable();
         let (_gclk_out2, _gclk2) =
             GclkOut::enable(tokens.gclk_io.gclk_out2, pins.pb16, gclk2, false);
+
+        let osculp32k = osculp32k.set_calibration(1);
+        let osculp32k = osculp32k.deactivate_32k();
+        let osculp32k = osculp32k.activate_32k();
+        let osculp32k = osculp32k.deactivate_1k();
+        let osculp32k = osculp32k.activate_1k();
+        let osculp32k = osculp32k.write_lock();
 
         let (gclk5, _osculp32k) = gclk::Gclk::new(tokens.gclks.gclk5, osculp32k);
         let gclk5 = gclk5.div(gclk::GclkDiv::Div(0)).enable();
