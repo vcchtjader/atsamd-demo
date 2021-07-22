@@ -1,5 +1,6 @@
 //! atsamd-demo
-// #![deny(warnings)]
+//#![deny(warnings)]
+//#![deny(missing_docs)]
 #![no_main]
 #![no_std]
 
@@ -25,12 +26,17 @@ use rtic::app;
 
 #[app(device = atsamd_hal::target_device, peripherals = true )]
 mod app {
-    use cortex_m::interrupt::disable;
+    //use cortex_m::interrupt::disable;
 
     use super::*;
+    #[shared]
+    struct SharedResources {}
+
+    #[local]
+    struct LocalResources {}
 
     #[init]
-    fn init(cx: init::Context) -> (init::LateResources, init::Monotonics()) {
+    fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics()) {
         let mut device = cx.device;
 
         // Get the clocks & tokens
@@ -42,8 +48,11 @@ mod app {
             &mut device.NVMCTRL,
         );
 
+
         // Get the pins
         let pins = Pins::new(device.PORT);
+
+        //let _ = clocking_preset_gclk0_120mhz_gclk5_2mhz_gclk1_external_32khz!(gclk0, dfll, pins.pa00, pins.pa01, tokens);
 
         // Enable pin PA14 and PA15 as an external source for XOSC0 at 8 MHz
         let xosc0 = Xosc::from_crystal(tokens.xosc0, pins.pa14, pins.pa15, 8.mhz()).enable();
@@ -150,18 +159,18 @@ mod app {
         let (_gclk_out2, _gclk2) =
             GclkOut::enable(tokens.gclk_io.gclk_out2, pins.pb16, gclk2, false);
 
-        let osculp32k = osculp32k.set_calibration(1);
+        //let osculp32k = osculp32k.set_calibration(1);
         let osculp32k = osculp32k.deactivate_32k();
         let osculp32k = osculp32k.activate_32k();
         let osculp32k = osculp32k.deactivate_1k();
         let osculp32k = osculp32k.activate_1k();
-        let osculp32k = osculp32k.write_lock();
+        //let osculp32k = osculp32k.write_lock();
 
         let (gclk5, _osculp32k) = gclk::Gclk::new(tokens.gclks.gclk5, osculp32k);
         let gclk5 = gclk5.div(gclk::GclkDiv::Div(0)).enable();
         let (_gclk_out5, _gclk5) =
             GclkOut::enable(tokens.gclk_io.gclk_out5, pins.pb11, gclk5, false);
 
-        (init::LateResources {}, init::Monotonics())
+        (SharedResources {}, LocalResources {}, init::Monotonics())
     }
 }
