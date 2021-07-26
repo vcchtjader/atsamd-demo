@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 panic-halt = "0.2.0"
+bitfield = "0.13.2"
 #heapless = "0.6.0"
 #embedded-hal = "0.2.4"
 #nb = "~0.1"
@@ -19,14 +20,14 @@ cortex-m-rtic = "0.6.0-alpha.2"
 #typenum = "1.12.0"
 
 [dependencies.atsamd-hal]
-#git = "https://github.com/bradleyharden/atsamd.git"
-#branch = "clock_rebase"
-path = "../atsamd/hal/"
+git = "https://github.com/vccggorski/atsamd.git"
+branch = "pukcc-on-v2-clocking"
+#path = "../atsamd/hal"
 version = "0.12.0"
 features = ["same51n-rt", "unproven"]
 
 [profile.dev]
-opt-level = 1
+opt-level = 0
 
 [profile.release]
 debug = true
