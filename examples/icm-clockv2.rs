@@ -7,7 +7,6 @@ use core::fmt::Write;
 use atsamd_hal::{
     clock::v2::{
         dpll::Dpll, gclk, gclk::Gclk1Div, gclkio::GclkOut, pclk::Pclk, retrieve_clocks, xosc::*,
-        xosc32k::*,
     },
     gpio::v2::Pin,
     gpio::v2::*,
@@ -61,10 +60,6 @@ mod app {
         icm_region1: Region<Region1>,
         icm_region2: Region<Region2>,
         icm_region3: Region<Region3>,
-        message_region0_sha1: [u32; 16],
-        message_region1_sha1: [u32; 16],
-        message_region2_sha224: [u32; 16],
-        message_region3_sha256: [u32; 16],
     }
 
     #[init]
@@ -108,13 +103,6 @@ mod app {
         // Output Gclk0 on pin PB14
         let (_gclk_out0, gclk0) =
             GclkOut::enable(tokens.gclk_io.gclk_out0, pins.pb14, gclk0, false);
-
-        // Enable external 32k-oscillator
-        let xosc32k =
-            Xosc32k::from_crystal(tokens.xosc32k, pins.pa00, pins.pa01).set_gain_mode(true);
-        let xosc32k = xosc32k.enable();
-        let xosc32k = xosc32k.activate_1k();
-        let _xosc32k = xosc32k.activate_32k();
 
         // Enable ICM apb clock
         // Clock v1
@@ -262,12 +250,6 @@ mod app {
         // Start the ICM calculation
         icm.enable();
 
-        // Setup the compare regions
-        let message_region0_sha1 = MESSAGE_REF0;
-        let message_region1_sha1 = MESSAGE_REF1;
-        let message_region2_sha224 = MESSAGE_REF1;
-        let message_region3_sha256 = MESSAGE_REF1;
-
         let (sercom_pclk, _gclk0) = Pclk::enable(tokens.pclks.sercom0, gclk0);
         let sercom_pclk = sercom_pclk.into();
 
@@ -293,16 +275,12 @@ mod app {
                 icm_region1,
                 icm_region2,
                 icm_region3,
-                message_region0_sha1,
-                message_region1_sha1,
-                message_region2_sha224,
-                message_region3_sha256,
             },
             init::Monotonics(),
         )
     }
 
-    #[task(binds = SERCOM0_2, shared = [uart, icm])]
+    #[task(binds = SERCOM0_2, shared = [uart])]
     fn uart(cx: uart::Context) {
         let mut uart = cx.shared.uart;
 
@@ -314,8 +292,6 @@ mod app {
     #[task(priority= 3, binds = ICM,
         shared = [uart, icm],
         local = [icm_region0, icm_region1, icm_region2, icm_region3,
-        message_region0_sha1, message_region1_sha1, message_region2_sha224,
-        message_region3_sha256
         ])]
     fn icm(cx: icm::Context) {
         let mut uart = cx.shared.uart;
@@ -329,7 +305,6 @@ mod app {
 
         // Get a parseable copy of the interrupt status vector
         let icminterrupt = icm.lock(|i| i.get_interrupt_status());
-        //cortex_m::asm::bkpt();
 
         // Check that all hashes has been computed
         if icminterrupt.get_rhc_int().is_all() {
@@ -413,197 +388,49 @@ mod app {
                     }
                 }
             }
-
-            // Reconfigure ICM to watch and compare memory instead
             uart.lock(|u| writeln!(u, "\rDone!").unwrap());
-
-            uart.lock(|u| writeln!(u, "\r Switch to region monitoring mode",).unwrap());
-            icm.lock(|i| i.swrst());
-
-            // Create temporary Region
-            let mut icm_region_desc = Regions::default();
-
-            // Setup region 0 to monitor memory
-            icm_region_desc
-                .region0
-                .set_region_address(cx.local.message_region0_sha1);
-            icm_region_desc
-                .region0
-                .rcfg
-                .reset_region_configuration_to_default();
-            icm_region_desc.region0.rcfg.set_algo(icm_algorithm::SHA1);
-            // Activate Compare Digest (should be true when comparing memory)
-            icm_region_desc.region0.rcfg.set_cdwbn(true);
-            // Digest Mismatch Interrupt Disable (enabled)
-            icm_region_desc.region0.rcfg.set_dmien(false);
-
-            // Set Region Mismatch Interrupt
-            icm_region0.set_rdm_int();
-
-            // Setup region 1 to monitor memory
-            icm_region_desc
-                .region1
-                .set_region_address(cx.local.message_region1_sha1);
-            icm_region_desc
-                .region1
-                .rcfg
-                .reset_region_configuration_to_default();
-            icm_region_desc.region1.rcfg.set_algo(icm_algorithm::SHA1);
-            // Activate Compare Digest (should be true when comparing memory)
-            icm_region_desc.region1.rcfg.set_cdwbn(true);
-            // Digest Mismatch Interrupt Disable (enabled)
-            icm_region_desc.region1.rcfg.set_dmien(false);
-
-            // Set Region Mismatch Interrupt
-            icm_region1.set_rdm_int();
-
-            // Setup region 2 to monitor memory
-            icm_region_desc
-                .region2
-                .set_region_address(cx.local.message_region2_sha224);
-            icm_region_desc
-                .region2
-                .rcfg
-                .reset_region_configuration_to_default();
-            icm_region_desc.region2.rcfg.set_algo(icm_algorithm::SHA224);
-            // Activate Compare Digest (should be true when comparing memory)
-            icm_region_desc.region2.rcfg.set_cdwbn(true);
-            // Digest Mismatch Interrupt Disable (enabled)
-            icm_region_desc.region2.rcfg.set_dmien(false);
-
-            // Set Region Mismatch Interrupt
-            icm_region2.set_rdm_int();
-
-            // Setup region 3 to monitor memory
-            icm_region_desc
-                .region3
-                .set_region_address(cx.local.message_region3_sha256);
-            icm_region_desc
-                .region3
-                .rcfg
-                .reset_region_configuration_to_default();
-            icm_region_desc.region3.rcfg.set_algo(icm_algorithm::SHA256);
-            // Activate Compare Digest (should be true when comparing memory)
-            icm_region_desc.region3.rcfg.set_cdwbn(true);
-            // Digest Mismatch Interrupt Disable (enabled)
-            icm_region_desc.region3.rcfg.set_dmien(false);
-            // Wrap
-            icm_region_desc.region3.rcfg.set_wrap(true);
-
-            // Set Region Mismatch Interrupt
-            icm_region3.set_rdm_int();
-
-            // Modify regions to trigger interrupts
-            uart.lock(|u| writeln!(u, "\rManually modify region0").unwrap());
-            cx.local.message_region0_sha1[3] = 0xDEAD_BEEF;
-            uart.lock(|u| writeln!(u, "\rManually modify region1").unwrap());
-            cx.local.message_region1_sha1[4] = 0xDEAD_BEEF;
-            uart.lock(|u| writeln!(u, "\rManually modify region2").unwrap());
-            cx.local.message_region2_sha224[5] = 0xDEAD_BEEF;
-            uart.lock(|u| writeln!(u, "\rManually modify region3").unwrap());
-            cx.local.message_region3_sha256[6] = 0xDEAD_BEEF;
-
-            // Copy the configured Regions into the static mut ICM is reading
-            unsafe {
-                ICM_REGION_DESC = icm_region_desc;
-            }
-
-            icm.lock(|i| i.enable());
-        } else if icminterrupt.get_rdm_int().is_all() {
+        } else {
+            uart.lock(|u| writeln!(u, "\rICM other interrupt!",).unwrap());
             if icminterrupt
                 .get_rdm_int()
                 .intersects(RegionDigestMismatch::R0)
             {
                 uart.lock(|u| writeln!(u, "\rRegion0 digest mismatch!",).unwrap());
-                // Disable the interrupt
-                icm_region0.disable_rdm_int();
-
-                uart.lock(|u| writeln!(u, "\rRegion 0: Expected,  Actual").unwrap());
-                for (index, val) in MESSAGE_REF0.iter().enumerate() {
-                    let cmp = cx.local.message_region0_sha1[index];
-                    if *val == cmp {
-                        uart.lock(|u| {
-                            writeln!(u, "\r   Match! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    } else {
-                        uart.lock(|u| {
-                            writeln!(u, "\rmismatch! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    }
-                }
             }
             if icminterrupt
                 .get_rdm_int()
                 .intersects(RegionDigestMismatch::R1)
             {
                 uart.lock(|u| writeln!(u, "\rRegion1 digest mismatch!",).unwrap());
-                // Disable the interrupt
-                icm_region1.disable_rdm_int();
-
-                uart.lock(|u| writeln!(u, "\rRegion 1: Expected,  Actual").unwrap());
-                for (index, val) in MESSAGE_REF1.iter().enumerate() {
-                    let cmp = cx.local.message_region1_sha1[index];
-                    if *val == cmp {
-                        uart.lock(|u| {
-                            writeln!(u, "\r   Match! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    } else {
-                        uart.lock(|u| {
-                            writeln!(u, "\rmismatch! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    }
-                }
             }
             if icminterrupt
                 .get_rdm_int()
                 .intersects(RegionDigestMismatch::R2)
             {
                 uart.lock(|u| writeln!(u, "\rRegion2 digest mismatch!",).unwrap());
-                // Disable the interrupt
-                icm_region2.disable_rdm_int();
-
-                uart.lock(|u| writeln!(u, "\rRegion 2: Expected,  Actual").unwrap());
-                for (index, val) in MESSAGE_REF1.iter().enumerate() {
-                    let cmp = cx.local.message_region2_sha224[index];
-                    if *val == cmp {
-                        uart.lock(|u| {
-                            writeln!(u, "\r   Match! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    } else {
-                        uart.lock(|u| {
-                            writeln!(u, "\rmismatch! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    }
-                }
             }
             if icminterrupt
                 .get_rdm_int()
                 .intersects(RegionDigestMismatch::R3)
             {
                 uart.lock(|u| writeln!(u, "\rRegion3 digest mismatch!",).unwrap());
-                // Disable the interrupt
-                icm_region3.disable_rdm_int();
-
-                uart.lock(|u| writeln!(u, "\rRegion 3: Expected,  Actual").unwrap());
-                for (index, val) in MESSAGE_REF1.iter().enumerate() {
-                    let cmp = cx.local.message_region3_sha256[index];
-                    if *val == cmp {
-                        uart.lock(|u| {
-                            writeln!(u, "\r   Match! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    } else {
-                        uart.lock(|u| {
-                            writeln!(u, "\rmismatch! {:#010x} {:#010x}", *val, cmp).unwrap()
-                        });
-                    }
-                }
             }
-
-            // Get and clear
-            let icminterrupt = icm.lock(|i| i.get_interrupt_status());
-
-            let rdm_ints = icminterrupt.get_rdm_int();
-            uart.lock(|u| writeln!(u, "\rRDM interrupt vector {:04b}", rdm_ints).unwrap());
+            if !icminterrupt.get_rsu_int().is_empty() {
+                let rsu = icminterrupt.get_rsu_int().bits();
+                uart.lock(|u| writeln!(u, "\rRSU interrupt: {:#10}", rsu).unwrap());
+            }
+            if !icminterrupt.get_rec_int().is_empty() {
+                let rec = icminterrupt.get_rec_int().bits();
+                uart.lock(|u| writeln!(u, "\rRSU interrupt: {:#10}", rec).unwrap());
+            }
+            if !icminterrupt.get_rwc_int().is_empty() {
+                let rwc = icminterrupt.get_rwc_int().bits();
+                uart.lock(|u| writeln!(u, "\rRSU interrupt: {:#10}", rwc).unwrap());
+            }
+            if !icminterrupt.get_rbe_int().is_empty() {
+                let rbe = icminterrupt.get_rbe_int().bits();
+                uart.lock(|u| writeln!(u, "\rRSU interrupt: {:#10}", rbe).unwrap());
+            }
         }
     }
 }

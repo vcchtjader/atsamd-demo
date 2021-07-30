@@ -5,12 +5,16 @@
 
 use panic_halt as _;
 
+use core::fmt::Write;
 use rtic::app;
 
 use atsamd_hal::{
-    clock::GenericClockController,
-    gpio::v2::pin::{self, *},
+    clock::v2::{pclk::Pclk, retrieve_clocks},
+    gpio::v2::Pin,
+    gpio::v2::*,
     prelude::*,
+    sercom::*,
+    time::U32Ext,
 };
 
 #[app(device = atsamd_hal::target_device,
@@ -21,7 +25,9 @@ mod app {
     use super::*;
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        uart: UART0<Pin<PA05, AlternateD>, Pin<PA04, AlternateD>, (), ()>,
+    }
 
     #[local]
     struct Local {}
@@ -30,21 +36,58 @@ mod app {
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics()) {
         let mut device = cx.device;
 
-        // Clock setup
-        let _gcc = GenericClockController::with_internal_32kosc(
+        // Get the clocks & tokens
+        let (gclk0, dfll, _osculp32k, tokens) = retrieve_clocks(
+            device.OSCCTRL,
+            device.OSC32KCTRL,
             device.GCLK,
-            &mut device.MCLK,
-            &mut device.OSC32KCTRL,
-            &mut device.OSCCTRL,
+            device.MCLK,
             &mut device.NVMCTRL,
         );
 
-        // Get GPIO pins
+        // Get the pins
         let pins = Pins::new(device.PORT);
-        let mut pa08: pin::Pin<PA08, PushPullOutput> = pins.pa08.into();
 
-        let _pa08 = pa08.set_high();
+        // Steal access to mclk for UART v1
+        let (_, _, _, mut mclk) = unsafe { tokens.pac.steal() };
 
-        (Shared {}, Local {}, init::Monotonics())
+        let (gclk0, _gclk5, _gclk1, _xosc32k, _dpll0, _dfll) = atsamd_hal::clocking_preset_gclk0_120mhz_gclk5_2mhz_gclk1_external_32khz!(
+            gclk0, dfll, pins.pa00, pins.pa01, tokens
+        );
+
+        let (sercom_pclk, _gclk0) = Pclk::enable(tokens.pclks.sercom0, gclk0);
+        let sercom_pclk = sercom_pclk.into();
+
+        let mut uart = UART0::new(
+            &sercom_pclk,
+            115_200.hz(),
+            device.SERCOM0,
+            &mut mclk,
+            (pins.pa05.into(), pins.pa04.into()),
+        );
+        uart.intenset(|w| {
+            w.rxc().set_bit();
+        });
+
+        cortex_m::asm::bkpt();
+
+        uart.write_str("\n\rBooted RTIC.\n\r").unwrap();
+
+        (Shared { uart }, Local {}, init::Monotonics())
+    }
+
+    #[task(binds = SERCOM0_2, shared = [uart], local = [])]
+    fn uart(cx: uart::Context) {
+        let mut uart = cx.shared.uart;
+
+        // Basic echo
+        let input = uart.lock(|u| u.read().unwrap());
+
+        if input as char == '\r' {
+            // Possible to handle newline differently
+            uart.lock(|u| write!(u, "{}", input as char).unwrap());
+        } else {
+            uart.lock(|u| write!(u, "{}", input as char).unwrap());
+        }
     }
 }

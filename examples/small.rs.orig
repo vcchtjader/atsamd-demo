@@ -1,0 +1,187 @@
+//! LPA UART debug controller example
+// Cargo doc workaround https://github.com/rust-lang/rust/issues/62184
+#![cfg_attr(not(doc), no_main)]
+#![no_std]
+
+<<<<<<< HEAD
+use panic_halt as _;
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+// #[allow(unused_extern_crates)]
+extern crate panic_semihosting;
+// extern crate panic_halt;
+=======
+extern crate panic_halt;
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+
+<<<<<<< HEAD
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+use cortex_m_semihosting::hprintln;
+=======
+use core::fmt::Write;
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+use rtic::app;
+
+use atsamd_hal::{
+<<<<<<< HEAD
+    clock::GenericClockController,
+    gpio::v2::pin::{self, *},
+    prelude::*,
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+    clock::GenericClockController, common::pad::PadPin, gpio::GpioExt, target_device as pac,
+=======
+    clock::v2::{pclk::Pclk, retrieve_clocks},
+    gpio::v2::Pin,
+    gpio::v2::*,
+    prelude::*,
+    sercom::*,
+    time::U32Ext,
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+};
+<<<<<<< HEAD
+
+#[app(device = atsamd_hal::target_device,
+    peripherals = true,
+    dispatchers = [ TCC0_MC0, TCC1_MC0, TCC1_MC1],
+    )]
+mod app {
+    use super::*;
+
+    #[shared]
+    struct Shared {}
+
+    #[local]
+    struct Local {}
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+use embedded_hal::digital::v2::OutputPin;
+
+#[app(device = atsamd_hal::target_device, peripherals = true )]
+const APP: () = {
+    extern "C" {
+        fn TCC1_INTREQ_1();
+        fn TCC1_INTREQ_2();
+        fn TCC2_INTREQ_2();
+    }
+=======
+
+#[app(device = atsamd_hal::target_device, peripherals = true )]
+mod app {
+    //use cortex_m::interrupt::disable;
+
+    use super::*;
+    #[shared]
+    struct SharedResources {
+        uart: UART0<Pin<PA05, AlternateD>, Pin<PA04, AlternateD>, (), ()>,
+    }
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+
+    #[local]
+    struct LocalResources {}
+
+    #[init]
+<<<<<<< HEAD
+    fn init(cx: init::Context) -> (Shared, Local, init::Monotonics()) {
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+    fn init(cx: init::Context) -> () {
+        cortex_m::asm::delay(3 * 12_000_000);
+        //cortex_m::asm::bkpt();
+=======
+    fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics()) {
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+        let mut device = cx.device;
+
+<<<<<<< HEAD
+        // Clock setup
+        let _gcc = GenericClockController::with_internal_32kosc(
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+        // == Clock setup
+        let mut gcc = GenericClockController::with_internal_32kosc(
+=======
+        // Get the clocks & tokens
+        let (gclk0, dfll, _osculp32k, tokens) = retrieve_clocks(
+            device.OSCCTRL,
+            device.OSC32KCTRL,
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+            device.GCLK,
+            device.MCLK,
+            &mut device.NVMCTRL,
+        );
+
+<<<<<<< HEAD
+        // Get GPIO pins
+        let pins = Pins::new(device.PORT);
+        let mut pa08: pin::Pin<PA08, PushPullOutput> = pins.pa08.into();
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+        // == Pin I/O port setup
+        let mut port = device.PORT.split();
+=======
+        // Get the pins
+        let pins = Pins::new(device.PORT);
+
+        // Steal access to mclk for UART v1
+        let (_, _, _, mut mclk) = unsafe { tokens.pac.steal() };
+
+        let (gclk0, _gclk5, _gclk1, _xosc32k, _dpll0, _dfll) = atsamd_hal::clocking_preset_gclk0_120mhz_gclk5_2mhz_gclk1_external_32khz!(
+            gclk0, dfll, pins.pa00, pins.pa01, tokens
+        );
+
+        let (sercom_pclk, _gclk0) = Pclk::enable(tokens.pclks.sercom0, gclk0);
+        let sercom_pclk = sercom_pclk.into();
+
+        let mut uart = UART0::new(
+            &sercom_pclk,
+            115_200.hz(),
+            device.SERCOM0,
+            &mut mclk,
+            (pins.pa05.into(), pins.pa04.into()),
+        );
+        uart.intenset(|w| {
+            w.rxc().set_bit();
+        });
+
+        cortex_m::asm::bkpt();
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+
+<<<<<<< HEAD
+        let _pa08 = pa08.set_high();
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+        pub type En5V0Pin = Pd0<Output<PushPull>>;
+        let mut en5v0: En5V0Pin = port.pd0.into_push_pull_output(&mut port.port);
+=======
+        uart.write_str("\n\rBooted RTIC.\n\r").unwrap();
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+
+<<<<<<< HEAD
+        (Shared {}, Local {}, init::Monotonics())
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+        en5v0.set_high().ok();
+=======
+        (
+            SharedResources { uart },
+            LocalResources {},
+            init::Monotonics(),
+        )
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
+    }
+<<<<<<< HEAD
+}
+||||||| parent of ff56c79 (ICM: Base examples of ICM usage)
+};
+=======
+
+    #[task(binds = SERCOM0_2, shared = [uart], local = [])]
+    fn uart(cx: uart::Context) {
+        let mut uart = cx.shared.uart;
+
+        // Basic echo
+        let input = uart.lock(|u| u.read().unwrap());
+
+        //cortex_m::asm::bkpt();
+        if input as char == '\r' {
+            // Possible to handle newline differently
+            uart.lock(|u| write!(u, "{}", input as char).unwrap());
+        } else {
+            uart.lock(|u| write!(u, "{}", input as char).unwrap());
+        }
+    }
+}
+>>>>>>> ff56c79 (ICM: Base examples of ICM usage)
