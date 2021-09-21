@@ -1,36 +1,50 @@
-//! atsamd-demo
-//#![deny(warnings)]
-//#![deny(missing_docs)]
 #![no_main]
 #![no_std]
 
-use panic_halt as _;
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    unsafe {
+        match UART.as_mut() {
+            Some(u) => writeln!(u as &mut dyn Write<_, Error = _>, "{}", info).unwrap(),
+            None => {}
+        }
+    }
+    loop {
+        cortex_m::asm::nop();
+    }
+}
+
+use core::fmt::Write as _;
 
 use atsamd_hal::{
-    clock::v2::{
-        dpll::Dpll,
-        gclk,
-        gclk::{Gclk1Div, GclkDiv},
-        gclkio::{GclkIn, GclkOut},
-        pclk::Pclk,
-        retrieve_clocks,
-        rtc::*,
-        xosc::*,
-        xosc32k::*,
+    clock::v2::{pclk::Pclk, retrieve_clocks, xosc::Xosc, dpll::Dpll},
+    gpio::v2::{Alternate, Pin, Pins, D, PA04, PA05, PA08, PA09},
+    hal::serial::Write,
+    prelude::*,
+    sercom::{
+        v2::{uart::*, IoSet3, Sercom0},
+        I2CMaster2,
     },
-    gpio::v2::Pins,
     time::U32Ext,
 };
 
+use eeprom24x::{addr_size::OneByte, page_size::B8, Eeprom24x, SlaveAddr};
+
 use rtic::app;
+pub type Uart0 =
+    Uart<Config<Pads<Sercom0, IoSet3, Pin<PA05, Alternate<D>>, Pin<PA04, Alternate<D>>>>, Duplex>;
+pub type I2C = I2CMaster2<Pin<PA09, Alternate<D>>, Pin<PA08, Alternate<D>>>;
+
+static mut UART: Option<Uart0> = None;
 
 #[app(device = atsamd_hal::target_device, peripherals = true )]
 mod app {
-    //use cortex_m::interrupt::disable;
-
     use super::*;
+
     #[shared]
-    struct SharedResources {}
+    struct SharedResources {
+        eeprom: Eeprom24x<I2C, B8, OneByte>,
+    }
 
     #[local]
     struct LocalResources {}
@@ -39,8 +53,9 @@ mod app {
     fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics()) {
         let mut device = cx.device;
 
-        // Get the clocks & tokens
-        let (gclk0, dfll, osculp32k, tokens) = retrieve_clocks(
+        let pins = Pins::new(device.PORT);
+
+        let (gclk0, dfll, _, tokens) = retrieve_clocks(
             device.OSCCTRL,
             device.OSC32KCTRL,
             device.GCLK,
@@ -48,129 +63,74 @@ mod app {
             &mut device.NVMCTRL,
         );
 
-
-        // Get the pins
-        let pins = Pins::new(device.PORT);
-
-        //let _ = clocking_preset_gclk0_120mhz_gclk5_2mhz_gclk1_external_32khz!(gclk0, dfll, pins.pa00, pins.pa01, tokens);
-
-        // Enable pin PA14 and PA15 as an external source for XOSC0 at 8 MHz
+        let (_, _, _, mut mclk) = unsafe { tokens.pac.steal() };
         let xosc0 = Xosc::from_crystal(tokens.xosc0, pins.pa14, pins.pa15, 8.mhz()).enable();
 
-        // Take DFLL 48 MHz, divide down to 2 MHz for Gclk1
-        let (gclk1, dfll) = gclk::Gclk::new(tokens.gclks.gclk1, dfll);
-        let gclk1 = gclk1.div(Gclk1Div::Div(24)).enable();
-
-        // Enable output for 2 MHz clock on PB15
-        let (_gclk_out1, _gclk1) =
-            GclkOut::enable(tokens.gclk_io.gclk_out1, pins.pb15, gclk1, false);
-
-        // Either from pclk or xosc0
-        // =========================
-
-        // Setup DPLL0 using pclk of GCLK1
-        //let (pclk_dpll0, _gclk1) = Pclk::enable(tokens.pclks.dpll0, gclk1);
-        //let pclk_dpll0 = Dpll::from_pclk(tokens.dpll0, pclk_dpll0);
-        //let dpll0 = pclk_dpll0.set_loop_div(50, 0).enable();
-
-        // Configure DPLL0 to 100 MHz fed from Xosc0
         let (dpll0, _xosc0) = Dpll::from_xosc(tokens.dpll0, xosc0, 1);
+        let dpll0 = dpll0.set_loop_div(95, 0).enable();
 
-        // Use the predivider, 8 MHz / 4 * 50 = 100 MHz
-
-        let dpll0 = dpll0.set_source_div(1).set_loop_div(50, 0).enable();
-
-        // Disable the DPLL0
-        let dpll0 = dpll0.disable();
-
-        // Configure DPLL0 with 8 / 4 * 60 = 120 MHz
-        let dpll0 = dpll0.set_source_div(1).set_loop_div(60, 0).enable();
-
-        //// Change Gclk0 from Dfll to Dpll0, MCLK = 100 MHz
         let (gclk0, _dfll, _dpll0) = gclk0.swap(dfll, dpll0);
 
-        //// Output Gclk0 on pin PB14
-        let (_gclk_out0, _gclk0) =
-            GclkOut::enable(tokens.gclk_io.gclk_out0, pins.pb14, gclk0, false);
+        let (pclk_sercom0, gclk0) = Pclk::enable(tokens.pclks.sercom0, gclk0);
+        let (pclk_sercom2, _gclk0) = Pclk::enable(tokens.pclks.sercom2, gclk0);
+        let pclk_sercom2 = pclk_sercom2.into();
 
-        //// ----
-        //// Input for Gclk3 on pin PB17 (assumed frequency of 2 MHz)
-        let gclk_in3 = GclkIn::enable(tokens.gclk_io.gclk_in3, pins.pb17, 2.mhz());
-        let (gclk3, _gclk_in3) = gclk::Gclk::new(tokens.gclks.gclk3, gclk_in3);
-        let gclk3 = gclk3.enable();
+        let mut uart0 = Config::new(
+            &mclk,
+            device.SERCOM0,
+            Pads::default().rx(pins.pa05).tx(pins.pa04),
+            pclk_sercom0.freq(),
+        )
+        .baud(115_200.hz(), BaudMode::Arithmetic(Oversampling::Bits16))
+        .enable();
+        uart0.enable_interrupts(Flags::RXC);
 
-        // Setup DPLL1 with input from Gclk3, fed from external 2 MHz signal on pin PB17
-        let (pclk_dpll1, _gclk3) = Pclk::enable(tokens.pclks.dpll1, gclk3);
-        let dpll1 = Dpll::from_pclk(tokens.dpll1, pclk_dpll1);
-        // Configure DPLL1 to run at 2 * 50 = 100 MHz
-        let dpll1 = dpll1.set_loop_div(50, 0).enable();
+        writeln!(&mut uart0 as &mut dyn Write<_, Error = _>, "RTIC booted!").unwrap();
 
-        // Output DPLL1 on PB20 via Gclk6, divided by 200 resulting in 0.5 MHz output
-        let (gclk6, _dpll1) = gclk::Gclk::new(tokens.gclks.gclk6, dpll1);
-        let gclk6 = gclk6.div(GclkDiv::Div(200)).enable();
-        let (_gclk_out6, _gclk6) =
-            GclkOut::enable(tokens.gclk_io.gclk_out6, pins.pb20, gclk6, false);
+        unsafe {
+            UART.replace(uart0);
+        }
 
-        // ----
-        // Enable external 32k-oscillator
-        let xosc32k =
-            Xosc32k::from_crystal(tokens.xosc32k, pins.pa00, pins.pa01).set_gain_mode(true);
-        let xosc32k = xosc32k.set_start_up(StartUp32k::CYCLE2048);
-        let xosc32k = xosc32k.set_on_demand(false).set_run_standby(true);
-        let xosc32k = xosc32k.enable();
-        let xosc32k = xosc32k.activate_1k();
-        let xosc32k = xosc32k.activate_32k();
-        cortex_m::asm::bkpt();
-        let xosc32k = xosc32k.deactivate_1k();
-        cortex_m::asm::bkpt();
-        let xosc32k = xosc32k.activate_1k();
-        let xosc32k = xosc32k.disable();
-        let (xosc32ktoken, pinpa00, _pinpa01) = xosc32k.free();
+        let i2c = I2CMaster2::new_with_timeout(
+            &pclk_sercom2,
+            400.khz(),
+            device.SERCOM2,
+            &mut mclk,
+            pins.pa09.into_mode::<Alternate<D>>(),
+            pins.pa08.into_mode::<Alternate<D>>(),
+            100,
+        );
 
-        let xosc32k = Xosc32k::from_clock(xosc32ktoken, pinpa00);
-        let xosc32k = xosc32k.enable();
-        let xosc32k = xosc32k.activate_32k();
+        let eeprom = Eeprom24x::new_24x02(i2c, SlaveAddr::Alternative(true, true, false));
 
-        let xosc32k = set_rtc_clock_32k(xosc32k);
-        //let xosc32k = xosc32k.disable();
-        let xosc32k = unset_rtc_clock_32k(xosc32k);
+        (
+            SharedResources { eeprom },
+            LocalResources {},
+            init::Monotonics(),
+        )
+    }
 
-        let xosc32k = xosc32k.activate_1k();
-        let xosc32k = set_rtc_clock_1k(xosc32k);
-        //let xosc32k = xosc32k.disable();
-        let xosc32k = unset_rtc_clock_1k(xosc32k);
+    #[task(binds = SERCOM0_2, shared = [eeprom])]
+    fn uart(cx: uart::Context) {
+        let uart0 = unsafe { UART.as_mut().unwrap() };
+        let _ = uart0.read().unwrap();
+        let mut eeprom = cx.shared.eeprom;
 
-        let (_gclk11, xosc32k) = gclk::Gclk::new(tokens.gclks.gclk11, xosc32k);
-
-        // Xosc32k = 32kHz Expressed as MHz: >>> 32*1024/1000/1000 = 0.032768
-        // 100 / 0.032768 = 3051.7578125
+        // eeprom.lock(|e| {
+        //     e.write_page(0x0, &[0xDE, 0xAD, 0xBE, 0xEF, 0xFF, 0xFF, 0xFF, 0xFF])
+        //         .unwrap()
+        // });
         //
-        // Missing 0.7578...
-        //
-        // Use fractional divider: x / 32 = 0.75..
-        // 24/32 = 0.75
-        //
-        // 3052 * (32*1024/1000/1000) = 100.007936
-        //let (dpll1, xosc32k) = Dpll::from_xosc32k(tokens.dpll1, xosc32k);
-        //let _dpll1 = dpll1.set_loop_div(3000, 24).enable();
+        let mut buffer = [0_u8; 8];
 
-        let (gclk2, _xosc32k) = gclk::Gclk::new(tokens.gclks.gclk2, xosc32k);
-        let gclk2 = gclk2.div(gclk::GclkDiv::Div(2)).enable();
-        let (_gclk_out2, _gclk2) =
-            GclkOut::enable(tokens.gclk_io.gclk_out2, pins.pb16, gclk2, false);
-
-        //let osculp32k = osculp32k.set_calibration(1);
-        let osculp32k = osculp32k.deactivate_32k();
-        let osculp32k = osculp32k.activate_32k();
-        let osculp32k = osculp32k.deactivate_1k();
-        let osculp32k = osculp32k.activate_1k();
-        //let osculp32k = osculp32k.write_lock();
-
-        let (gclk5, _osculp32k) = gclk::Gclk::new(tokens.gclks.gclk5, osculp32k);
-        let gclk5 = gclk5.div(gclk::GclkDiv::Div(0)).enable();
-        let (_gclk_out5, _gclk5) =
-            GclkOut::enable(tokens.gclk_io.gclk_out5, pins.pb11, gclk5, false);
-
-        (SharedResources {}, LocalResources {}, init::Monotonics())
+        match eeprom.lock(|e| e.read_data(0x0, &mut buffer)) {
+            Ok(_) => writeln!(uart0 as &mut dyn Write<_, Error = _>, "{:#02X?}", buffer).unwrap(),
+            Err(e) => writeln!(
+                uart0 as &mut dyn Write<_, Error = _>,
+                "Read data failure: {:#?}",
+                e
+            )
+            .unwrap(),
+        };
     }
 }

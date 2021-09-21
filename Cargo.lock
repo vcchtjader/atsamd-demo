@@ -30,12 +30,13 @@ dependencies = [
  "atsamd-hal",
  "cortex-m 0.6.7",
  "cortex-m-rtic",
- "panic-halt",
+ "eeprom24x",
 ]
 
 [[package]]
 name = "atsamd-hal"
 version = "0.12.0"
+source = "git+https://github.com/vccggorski/atsamd.git?branch=work/i2c-timeout#0b1cec5e70e403ac3382a4e90e2f1fe5cf2fd056"
 dependencies = [
  "atsame51n",
  "bitfield",
@@ -57,6 +58,7 @@ dependencies = [
 [[package]]
 name = "atsame51n"
 version = "0.9.0"
+source = "git+https://github.com/vccggorski/atsamd.git?branch=work/i2c-timeout#0b1cec5e70e403ac3382a4e90e2f1fe5cf2fd056"
 dependencies = [
  "bare-metal 0.2.5",
  "cortex-m 0.6.7",
@@ -176,6 +178,15 @@ dependencies = [
  "quote",
  "rtic-syntax",
  "syn",
+]
+
+[[package]]
+name = "eeprom24x"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43086422cd19eb76a72b0cade7fcc6f271af062dcd7fb7a9cc93bd1b35712063"
+dependencies = [
+ "embedded-hal",
 ]
 
 [[package]]
@@ -360,12 +371,6 @@ checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
 dependencies = [
  "autocfg",
 ]
-
-[[package]]
-name = "panic-halt"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de96540e0ebde571dc55c73d60ef407c653844e6f9a1e2fdbd40c07b9252d812"
 
 [[package]]
 name = "paste"
