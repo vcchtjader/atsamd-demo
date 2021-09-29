@@ -8,21 +8,14 @@ edition = "2018"
 
 [dependencies]
 panic-halt = "0.2.0"
-#heapless = "0.6.0"
-#embedded-hal = "0.2.4"
-#nb = "~0.1"
 cortex-m = "0.6.2"
-cortex-m-rtic = "0.6.0-alpha.2"
-#cortex-m-semihosting = "0.3.5"
-#panic-semihosting = "0.5.3"
-#paste = "0.1.18"
-#typenum = "1.12.0"
+cortex-m-rtic = "0.6.0-rc.2"
 
 [dependencies.atsamd-hal]
 #git = "https://github.com/bradleyharden/atsamd.git"
 #branch = "clock_rebase"
 path = "../atsamd-bradley/hal/"
-version = "0.12.0"
+version = "0.13.0"
 features = ["same51n-rt", "unproven"]
 
 [profile.dev]
