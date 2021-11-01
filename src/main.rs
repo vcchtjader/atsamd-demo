@@ -2,24 +2,79 @@
 #![no_main]
 #![no_std]
 
-use panic_halt as _;
+macro_rules! clear_screen {
+    ($tx:tt) => {{
+    // Sequence:
+    // `<ESC>[2J` (clear screen)
+    // `<ESC>[H` (cursor to home position)
+    // `<ESC>` == 0x1b
+    $tx.write_str("\x1b").unwrap();
+    $tx.write_str("[2J").unwrap();
+    $tx.write_str("\x1b").unwrap();
+    $tx.write_str("[H").unwrap();
+    }}
+}
+
+macro_rules! clear_line {
+    ($tx:tt) => {{
+    // Sequence:
+    // `<ESC>[2K` (clear line)
+    // `\r`: CR
+    // `<ESC>` == 0x1b
+    $tx.write_str("\x1b").unwrap();
+    $tx.write_str("[2K").unwrap();
+    $tx.write_str("\r").unwrap();
+    }}
+}
+
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    unsafe {
+        match UART0_TX.as_mut() {
+            Some(u) => write!(u as &mut dyn Write<_, Error = _>, "{}\r\n", info).unwrap(),
+            None => {}
+        }
+    }
+    loop {
+        cortex_m::asm::nop();
+    }
+}
+
+use core::fmt::Write as _;
 
 use atsamd_hal::{
-    clock::v2::{
-        dpll::Dpll, gclk, gclk::Gclk1Div, gclkio::GclkOut, retrieve_clocks, xosc::*, xosc32k::*,
-    },
-    gpio::v2::Pins,
+    clock::GenericClockController,
+    dsu::Dsu,
+    gpio::v2::{Alternate, Pin, Pins, D, PA04, PA05},
+    hal::serial::Write,
+    nvm::{smart_eeprom::SmartEepromMode, Nvm},
+    prelude::*,
+    sercom::v2::{uart::*, IoSet3, Sercom0},
     time::U32Ext,
 };
+use nb::block;
 
 use rtic::app;
+pub type Uart0Tx =
+    Uart<Config<Pads<Sercom0, IoSet3, Pin<PA05, Alternate<D>>, Pin<PA04, Alternate<D>>>>, TxDuplex>;
+pub type Uart0Rx =
+    Uart<Config<Pads<Sercom0, IoSet3, Pin<PA05, Alternate<D>>, Pin<PA04, Alternate<D>>>>, RxDuplex>;
 
-#[app(device = atsamd_hal::target_device, peripherals = true )]
+pub type String = heapless::String<256>;
+
+static mut UART0_TX: Option<Uart0Tx> = None;
+
+#[app(device = atsamd_hal::target_device, peripherals = true, dispatchers = [FREQM])]
 mod app {
-
     use super::*;
+
     #[shared]
-    struct SharedResources {}
+    struct SharedResources {
+        uart0_rx: Uart0Rx,
+        nvm: Nvm,
+        dsu: Dsu,
+        buffer: String,
+    }
 
     #[local]
     struct LocalResources {}
@@ -28,48 +83,184 @@ mod app {
     fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics()) {
         let mut device = cx.device;
 
-        // Get the clocks & tokens
-        let (gclk0, dfll, _osculp32k, tokens) = retrieve_clocks(
-            device.OSCCTRL,
-            device.OSC32KCTRL,
+        let pins = Pins::new(device.PORT);
+
+        let mclk = &mut device.MCLK;
+
+        let mut clocks = GenericClockController::with_external_32kosc(
             device.GCLK,
-            device.MCLK,
+            mclk,
+            &mut device.OSC32KCTRL,
+            &mut device.OSCCTRL,
             &mut device.NVMCTRL,
         );
 
-        // Get the pins
-        let pins = Pins::new(device.PORT);
+        let gclk0 = clocks.gclk0();
 
-        let crystal = CrystalConfig::new(8.mhz()).unwrap();
+        let mut uart0 = Config::new(
+            &mclk,
+            device.SERCOM0,
+            Pads::default().rx(pins.pa05).tx(pins.pa04),
+            clocks.sercom0_core(&gclk0).unwrap().freq(),
+        )
+        .baud(115_200.hz(), BaudMode::Arithmetic(Oversampling::Bits16))
+        .enable();
+        uart0.enable_interrupts(Flags::RXC);
 
-        // Enable pin PA14 and PA15 as an external source for XOSC0 at 8 MHz
-        let xosc0 = Xosc::from_crystal(tokens.xosc0, pins.pa14, pins.pa15, crystal).enable();
+        let nvm = Nvm::new(device.NVMCTRL);
+        let dsu = Dsu::new(device.DSU, &device.PAC).unwrap();
+        write!(
+            &mut uart0 as &mut dyn Write<_, Error = _>,
+            "RTIC booted!\r\n"
+        )
+        .unwrap();
 
-        // Take DFLL 48 MHz, divide down to 2 MHz for Gclk1
-        let (gclk1, dfll) = gclk::Gclk::new(tokens.gclks.gclk1, dfll);
-        let _gclk1 = gclk1.div(Gclk1Div::Div(24)).enable();
+        let (uart0_rx, uart0_tx) = uart0.split();
 
-        // Configure DPLL0 to 100 MHz fed from Xosc0
-        let (dpll0, _xosc0) = Dpll::from_xosc(tokens.dpll0, xosc0, 1);
+        unsafe {
+            UART0_TX.replace(uart0_tx);
+        }
 
-        // Use 4 as source predivider, 8 MHz / (2 * ( 1 + prediv) * 50 = 100 MHz,
-        // where prediv = 1
-        let dpll0 = unsafe { dpll0.set_source_div(1).set_loop_div(50, 0).force_enable() };
-
-        // Change Gclk0 from Dfll to Dpll0, MCLK = 100 MHz
-        let (gclk0, _dfll, _dpll0) = gclk0.swap(dfll, dpll0);
-
-        // Output Gclk0 on pin PB14
-        let (_gclk_out0, _gclk0) =
-            GclkOut::enable(tokens.gclk_io.gclk_out0, pins.pb14, gclk0, false);
-
-        // Enable external 32k-oscillator
-        let xosc32k =
-            Xosc32k::from_crystal(tokens.xosc32k, pins.pa00, pins.pa01).set_gain_mode(true);
-        let xosc32k = xosc32k.enable();
-        let xosc32k = xosc32k.activate_1k();
-        let _xosc32k = xosc32k.activate_32k();
-
-        (SharedResources {}, LocalResources {}, init::Monotonics())
+        (
+            SharedResources {
+                uart0_rx,
+                nvm,
+                dsu,
+                buffer: heapless::String::new(),
+            },
+            LocalResources {},
+            init::Monotonics(),
+        )
     }
+
+    #[derive(Debug)]
+    pub enum Action {
+        Read,
+        Write,
+    }
+
+    #[task(shared = [buffer, nvm], capacity = 10)]
+    fn uart_handle(cx: uart_handle::Context, uart_data: UartCommand) {
+        let mut buffer = cx.shared.buffer;
+        let mut nvm = cx.shared.nvm;
+        let uart0_tx = unsafe { UART0_TX.as_mut().unwrap() as &mut dyn Write<_, Error = _> };
+        match uart_data {
+            UartCommand::Return => {
+                buffer.lock(|b| {
+                    uart0_tx.write_str("\r\n").unwrap();
+                    // custom action start
+
+                    let mut iterator = b.split_whitespace();
+                    let (action, arg1, arg2) = match iterator
+                        .next()
+                        .and_then(|v| match v {
+                            "r" => Some(Action::Read),
+                            "w" => Some(Action::Write),
+                            _ => None,
+                        })
+                        .and_then(|action| {
+                            iterator
+                                .next()
+                                .and_then(|arg1| arg1.parse().ok())
+                                .and_then(|arg1| {
+                                    iterator
+                                        .next()
+                                        .and_then(|arg2| arg2.parse().ok())
+                                        .and_then(|arg2| Some((action, arg1, arg2)))
+                                })
+                        }) {
+                        Some(v) => v,
+                        None => {
+                            uart0_tx.write_str("argument parsing failure\r\n").unwrap();
+                            b.clear();
+                            return;
+                        }
+                    };
+
+                    nvm.lock(|n| {
+                        let mut se = match n.smart_eeprom().unwrap() {
+                            SmartEepromMode::Unlocked(se) => se,
+                            SmartEepromMode::Locked(se) => se.unlock(),
+                        };
+                        match action {
+                            Action::Read => {
+                                se.iter::<u8>().enumerate().skip(arg1).take(arg2).for_each(
+                                    |(i, v)| {
+                                        write!(
+                                            uart0_tx as &mut dyn Write<_, Error = _>,
+                                            "{:0x}: {:0x}\r\n",
+                                            i, v
+                                        )
+                                        .unwrap()
+                                    },
+                                )
+                            }
+                            Action::Write => {
+                                use core::convert::TryInto;
+                                uart0_tx.write_str("writing to eeprom..\r\n").unwrap();
+                                se.iter_mut::<u8>()
+                                    .skip(arg1)
+                                    .take(arg2)
+                                    .for_each(|v| *v = (arg2 & 0xff_usize).try_into().unwrap());
+                                uart0_tx.write_str("done\r\n").unwrap();
+                            }
+                        }
+                    });
+
+                    b.clear();
+                })
+            }
+            UartCommand::DataChar(character) => buffer.lock(|b| match b.push(character) {
+                Ok(_) => {
+                    clear_line!(uart0_tx);
+                    uart0_tx.write_str(b.as_str()).unwrap();
+                }
+                Err(_) => uart_handle::spawn(UartCommand::BufferFull).unwrap(),
+            }),
+            UartCommand::Backspace => buffer.lock(|b| match b.pop() {
+                Some(_) => {
+                    clear_line!(uart0_tx);
+                    uart0_tx.write_str(b.as_str()).unwrap();
+                }
+                None => (),
+            }),
+            UartCommand::CtrlC => buffer.lock(|b| {
+                b.clear();
+                clear_screen!(uart0_tx);
+                uart0_tx.write_str(b.as_str()).unwrap();
+            }),
+            // failure / not supported commands
+            other => write!(
+                uart0_tx as &mut dyn Write<_, Error = _>,
+                "error: {:?}\r\n",
+                other
+            )
+            .unwrap(),
+        }
+    }
+
+    #[task(binds = SERCOM0_2, shared = [uart0_rx], priority = 2)]
+    fn uart_interrupt(cx: uart_interrupt::Context) {
+        let mut rx = cx.shared.uart0_rx;
+        match rx.lock(|rx| block!(rx.read())) {
+            Ok(byte) => match byte as char {
+                '\u{7f}' => uart_handle::spawn(UartCommand::Backspace),
+                '\u{3}' => uart_handle::spawn(UartCommand::CtrlC),
+                '\r' => uart_handle::spawn(UartCommand::Return),
+                byte => uart_handle::spawn(UartCommand::DataChar(byte)),
+            },
+            Err(e) => uart_handle::spawn(UartCommand::ReadError(e)),
+        }
+        .unwrap();
+    }
+}
+
+#[derive(Debug)]
+pub enum UartCommand {
+    CtrlC,
+    Backspace,
+    DataChar(char),
+    Return,
+    BufferFull,
+    ReadError(Error),
 }
