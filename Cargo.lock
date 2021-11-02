@@ -35,7 +35,7 @@ dependencies = [
 [[package]]
 name = "atsamd-hal"
 version = "0.13.0"
-source = "git+https://github.com/vccggorski/atsamd.git?branch=smart-eeprom#74cc5192522677b5c10129aff5f570a05ef84e33"
+source = "git+https://github.com/vccggorski/atsamd.git?branch=smart-eeprom#9e83edac5bd2b0a9e0d7f53fbee32326fe4887cc"
 dependencies = [
  "atsame51n",
  "bitfield",
@@ -57,7 +57,7 @@ dependencies = [
 [[package]]
 name = "atsame51n"
 version = "0.11.0"
-source = "git+https://github.com/vccggorski/atsamd.git?branch=smart-eeprom#74cc5192522677b5c10129aff5f570a05ef84e33"
+source = "git+https://github.com/vccggorski/atsamd.git?branch=smart-eeprom#9e83edac5bd2b0a9e0d7f53fbee32326fe4887cc"
 dependencies = [
  "bare-metal 0.2.5",
  "cortex-m",
