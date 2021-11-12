@@ -112,6 +112,14 @@ mod app {
         )
         .unwrap();
 
+        let (uart0_rx, uart0_tx) = uart0.split();
+
+        unsafe {
+            UART0_TX.replace(uart0_tx);
+        }
+
+        let uart0_tx = unsafe { UART0_TX.as_mut().unwrap() as &mut dyn Write<_, Error = _> };
+
         let modulus = [
             0xd2, 0xf4, 0x9b, 0xde, 0x08, 0x0f, 0x57, 0x0f, 0xc2, 0x4d, 0x4b, 0x59, 0xff, 0x72,
             0xf1, 0xbc, 0x08, 0xd0, 0xbe, 0xde, 0x5f, 0xac, 0xab, 0xa7, 0xa6, 0xc9, 0x6b, 0xec,
@@ -133,20 +141,17 @@ mod app {
             0x06, 0x3f, 0x4d, 0x62, 0xc5, 0x6e, 0x8f, 0xbf, 0x01, 0x9d, 0x0e, 0xca, 0xd0, 0x1c,
             0x36, 0x19, 0x42, 0x35_u8,
         ];
-        let mut cns = [0_u8; 300];
-        pukcc.zp_calculate_cns(&mut cns, &modulus).unwrap();
-        write!(
-            &mut uart0 as &mut dyn Write<_, Error = _>,
-            "{:#?}\r\n",
-            &cns[..256 + 13]
-        )
-        .unwrap();
-
-        let (uart0_rx, uart0_tx) = uart0.split();
-
-        unsafe {
-            UART0_TX.replace(uart0_tx);
-        }
+        let exponent = [0x00, 0x01, 0x00, 0x01];
+        let mut signature = [0_u8; 512];
+        pukcc
+            .rsa_sign(
+                &mut signature,
+                &[0xDE, 0xAD, 0xBE, 0xEF],
+                &exponent,
+                &modulus,
+            )
+            .unwrap();
+        write!(uart0_tx, "{:#0x?}\r\n", &signature[..modulus.len()]).unwrap();
 
         loop {}
 
