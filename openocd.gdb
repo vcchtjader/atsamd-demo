@@ -1,7 +1,5 @@
 target extended-remote :3333
 
-# Load PyCortexMDebug
-source /usr/lib/python3.9/site-packages/cmdebug/svd_gdb.py
 svd_load ATSAMD51N20A.svd
 
 # print demangled symbols
@@ -21,13 +19,6 @@ break rust_begin_unwind
 # end
 
 # *try* to stop at the user entry point (it might be gone due to inlining)
-break main
-
-# TUI options
-#foc cmd
-
-monitor arm semihosting enable
-monitor halt
 
 # # send captured ITM to the file itm.fifo
 # # (the microcontroller SWO pin must be connected to the programmer SWO pin)
@@ -44,8 +35,7 @@ monitor halt
 
 load
 
-# start the process but immediately halt the processor
-stepi
+monitor reset
 
 # Helpers
 define reload

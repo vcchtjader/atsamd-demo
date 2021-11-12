@@ -3,27 +3,27 @@
 
 macro_rules! clear_screen {
     ($tx:tt) => {{
-    // Sequence:
-    // `<ESC>[2J` (clear screen)
-    // `<ESC>[H` (cursor to home position)
-    // `<ESC>` == 0x1b
-    $tx.write_str("\x1b").unwrap();
-    $tx.write_str("[2J").unwrap();
-    $tx.write_str("\x1b").unwrap();
-    $tx.write_str("[H").unwrap();
-    }}
+        // Sequence:
+        // `<ESC>[2J` (clear screen)
+        // `<ESC>[H` (cursor to home position)
+        // `<ESC>` == 0x1b
+        $tx.write_str("\x1b").unwrap();
+        $tx.write_str("[2J").unwrap();
+        $tx.write_str("\x1b").unwrap();
+        $tx.write_str("[H").unwrap();
+    }};
 }
 
 macro_rules! clear_line {
     ($tx:tt) => {{
-    // Sequence:
-    // `<ESC>[2K` (clear line)
-    // `\r`: CR
-    // `<ESC>` == 0x1b
-    $tx.write_str("\x1b").unwrap();
-    $tx.write_str("[2K").unwrap();
-    $tx.write_str("\r").unwrap();
-    }}
+        // Sequence:
+        // `<ESC>[2K` (clear line)
+        // `\r`: CR
+        // `<ESC>` == 0x1b
+        $tx.write_str("\x1b").unwrap();
+        $tx.write_str("[2K").unwrap();
+        $tx.write_str("\r").unwrap();
+    }};
 }
 
 #[panic_handler]
@@ -70,8 +70,6 @@ mod app {
     #[shared]
     struct SharedResources {
         uart0_rx: Uart0Rx,
-        nvm: Nvm,
-        dsu: Dsu,
         buffer: String,
     }
 
@@ -106,11 +104,41 @@ mod app {
         .enable();
         uart0.enable_interrupts(Flags::RXC);
 
-        let nvm = Nvm::new(device.NVMCTRL);
-        let dsu = Dsu::new(device.DSU, &device.PAC).unwrap();
+        use atsamd_hal::pukcc::Pukcc;
+        let pukcc = Pukcc::enable(mclk).unwrap();
         write!(
             &mut uart0 as &mut dyn Write<_, Error = _>,
             "RTIC booted!\r\n"
+        )
+        .unwrap();
+
+        let modulus = [
+            0xd2, 0xf4, 0x9b, 0xde, 0x08, 0x0f, 0x57, 0x0f, 0xc2, 0x4d, 0x4b, 0x59, 0xff, 0x72,
+            0xf1, 0xbc, 0x08, 0xd0, 0xbe, 0xde, 0x5f, 0xac, 0xab, 0xa7, 0xa6, 0xc9, 0x6b, 0xec,
+            0xff, 0xe4, 0x85, 0xde, 0xfd, 0x8e, 0x93, 0xe3, 0x76, 0x9d, 0xc2, 0x8c, 0x5b, 0xac,
+            0x3f, 0xf8, 0x2b, 0xf7, 0xd8, 0x30, 0x3f, 0xf6, 0xc6, 0xde, 0x3e, 0xdf, 0x69, 0x4d,
+            0x12, 0x97, 0x71, 0xc1, 0xb2, 0x30, 0xb0, 0x74, 0x07, 0x82, 0x45, 0x15, 0xcc, 0x48,
+            0x96, 0xac, 0xb3, 0xe8, 0xad, 0x4b, 0xbf, 0x95, 0xdd, 0x4c, 0xd2, 0xae, 0x2b, 0xe0,
+            0x13, 0x49, 0x71, 0x9f, 0x34, 0x65, 0xc0, 0x4b, 0xb0, 0x86, 0x3e, 0x69, 0x87, 0xa9,
+            0x42, 0xa7, 0x28, 0x69, 0xf1, 0xa8, 0x30, 0x7e, 0x14, 0xc1, 0x30, 0xa3, 0xc2, 0x36,
+            0x3d, 0xcc, 0x27, 0x46, 0x80, 0x60, 0x22, 0xdc, 0xec, 0x94, 0x58, 0x83, 0xaa, 0x4a,
+            0x8f, 0xaa, 0x8b, 0x94, 0x0b, 0xad, 0xe0, 0x02, 0xa0, 0x47, 0x58, 0x7f, 0x5a, 0x1a,
+            0xc8, 0x71, 0xfa, 0xfc, 0x4c, 0x2e, 0x72, 0xd9, 0xb1, 0x15, 0xf9, 0x88, 0xf9, 0xaf,
+            0xd1, 0xc3, 0x36, 0xd0, 0x7e, 0x14, 0x74, 0xb4, 0xd4, 0x36, 0x30, 0xce, 0x02, 0xf8,
+            0x86, 0x9f, 0x28, 0x06, 0xe1, 0x5f, 0x93, 0x6e, 0x21, 0xa0, 0xe0, 0xf5, 0xbe, 0x3d,
+            0xd7, 0xce, 0xc0, 0x1d, 0x94, 0xba, 0x00, 0xe9, 0xf3, 0x59, 0xa4, 0xa8, 0x5c, 0xfb,
+            0xb7, 0x67, 0x34, 0xa8, 0x9a, 0xd9, 0x07, 0xc7, 0x7d, 0x1f, 0xfe, 0xce, 0x24, 0x23,
+            0xfe, 0x43, 0xe5, 0x7a, 0x89, 0x38, 0xa4, 0xb5, 0x98, 0x71, 0xbb, 0x01, 0xa0, 0x08,
+            0x36, 0x80, 0xd4, 0x4d, 0xfc, 0x1e, 0x2b, 0xcc, 0xb6, 0x40, 0x12, 0xd4, 0x9c, 0xbb,
+            0x06, 0x3f, 0x4d, 0x62, 0xc5, 0x6e, 0x8f, 0xbf, 0x01, 0x9d, 0x0e, 0xca, 0xd0, 0x1c,
+            0x36, 0x19, 0x42, 0x35_u8,
+        ];
+        let mut cns = [0_u8; 300];
+        pukcc.zp_calculate_cns(&mut cns, &modulus).unwrap();
+        write!(
+            &mut uart0 as &mut dyn Write<_, Error = _>,
+            "{:#?}\r\n",
+            &cns[..256 + 13]
         )
         .unwrap();
 
@@ -120,11 +148,11 @@ mod app {
             UART0_TX.replace(uart0_tx);
         }
 
+        loop {}
+
         (
             SharedResources {
                 uart0_rx,
-                nvm,
-                dsu,
                 buffer: heapless::String::new(),
             },
             LocalResources {},
@@ -138,77 +166,12 @@ mod app {
         Write,
     }
 
-    #[task(shared = [buffer, nvm], capacity = 10)]
+    #[task(shared = [buffer], capacity = 10)]
     fn uart_handle(cx: uart_handle::Context, uart_data: UartCommand) {
         let mut buffer = cx.shared.buffer;
-        let mut nvm = cx.shared.nvm;
         let uart0_tx = unsafe { UART0_TX.as_mut().unwrap() as &mut dyn Write<_, Error = _> };
         match uart_data {
-            UartCommand::Return => {
-                buffer.lock(|b| {
-                    uart0_tx.write_str("\r\n").unwrap();
-                    // Custom action start
-
-                    let mut iterator = b.split_whitespace();
-                    let (action, arg1, arg2) = match iterator
-                        .next()
-                        .and_then(|v| match v {
-                            "r" => Some(Action::Read),
-                            "w" => Some(Action::Write),
-                            _ => None,
-                        })
-                        .and_then(|action| {
-                            iterator
-                                .next()
-                                .and_then(|arg1| arg1.parse().ok())
-                                .and_then(|arg1| {
-                                    iterator
-                                        .next()
-                                        .and_then(|arg2| arg2.parse().ok())
-                                        .and_then(|arg2| Some((action, arg1, arg2)))
-                                })
-                        }) {
-                        Some(v) => v,
-                        None => {
-                            uart0_tx.write_str("Argument parsing failure\r\n").unwrap();
-                            b.clear();
-                            return;
-                        }
-                    };
-
-                    nvm.lock(|n| {
-                        let mut se = match n.smart_eeprom().unwrap() {
-                            SmartEepromMode::Unlocked(se) => se,
-                            SmartEepromMode::Locked(se) => se.unlock(),
-                        };
-                        match action {
-                            Action::Read => {
-                                se.iter::<u8>().enumerate().skip(arg1).take(arg2).for_each(
-                                    |(i, v)| {
-                                        write!(
-                                            uart0_tx as &mut dyn Write<_, Error = _>,
-                                            "{:0X}: {:0X}\r\n",
-                                            i, v
-                                        )
-                                        .unwrap()
-                                    },
-                                )
-                            }
-                            Action::Write => {
-                                use core::convert::TryInto;
-                                uart0_tx.write_str("Writing to EEPROM..\r\n").unwrap();
-                                se.iter_mut::<u8>()
-                                    .skip(arg1)
-                                    .take(arg2)
-                                    .for_each(|v| *v = (arg2 & 0xFF_usize).try_into().unwrap());
-                                uart0_tx.write_str("Done\r\n").unwrap();
-                            }
-                        }
-                    });
-
-                    b.clear();
-                })
-            }
+            UartCommand::Return => buffer.lock(|b| {}),
             UartCommand::DataChar(character) => buffer.lock(|b| match b.push(character) {
                 Ok(_) => {
                     clear_line!(uart0_tx);
