@@ -30,9 +30,8 @@ macro_rules! clear_line {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     unsafe {
-        match UART0_TX.as_mut() {
-            Some(u) => write!(u as &mut dyn Write<_, Error = _>, "{}\r\n", info).unwrap(),
-            None => {}
+        if let Some(u) = UART0_TX.as_mut() {
+            write!(u as &mut dyn Write<_, Error = _>, "{}\r\n", info).unwrap()
         }
     }
     loop {
@@ -166,7 +165,7 @@ mod app {
                                     iterator
                                         .next()
                                         .and_then(|arg2| arg2.parse().ok())
-                                        .and_then(|arg2| Some((action, arg1, arg2)))
+                                        .map(|arg2| (action, arg1, arg2))
                                 })
                         }) {
                         Some(v) => v,
@@ -217,12 +216,11 @@ mod app {
                 }
                 Err(_) => uart_handle::spawn(UartCommand::BufferFull).unwrap(),
             }),
-            UartCommand::Backspace => buffer.lock(|b| match b.pop() {
-                Some(_) => {
+            UartCommand::Backspace => buffer.lock(|b| {
+                if b.pop().is_some() {
                     clear_line!(uart0_tx);
                     uart0_tx.write_str(b.as_str()).unwrap();
                 }
-                None => (),
             }),
             UartCommand::CtrlC => buffer.lock(|b| {
                 b.clear();
