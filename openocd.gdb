@@ -1,7 +1,7 @@
 target extended-remote :3333
 
 # Load PyCortexMDebug
-source /usr/lib/python3.9/site-packages/cmdebug/svd_gdb.py
+source /usr/lib/python3.10/site-packages/cmdebug/svd_gdb.py
 svd_load ATSAMD51N20A.svd
 
 # print demangled symbols
