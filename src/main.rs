@@ -149,62 +149,32 @@ mod app {
                     uart0_tx.write_str("\r\n").unwrap();
                     // custom action start
 
-                    let mut iterator = b.split_whitespace();
-                    let (action, arg1, arg2) = match iterator
-                        .next()
-                        .and_then(|v| match v {
-                            "r" => Some(Action::Read),
-                            "w" => Some(Action::Write),
-                            _ => None,
-                        })
-                        .and_then(|action| {
-                            iterator
-                                .next()
-                                .and_then(|arg1| arg1.parse().ok())
-                                .and_then(|arg1| {
-                                    iterator
-                                        .next()
-                                        .and_then(|arg2| arg2.parse().ok())
-                                        .map(|arg2| (action, arg1, arg2))
-                                })
-                        }) {
-                        Some(v) => v,
-                        None => {
-                            uart0_tx.write_str("argument parsing failure\r\n").unwrap();
-                            b.clear();
-                            return;
-                        }
+                    use core2::io::Cursor;
+                    use lzma_rs::{
+                        allocator::MemoryDispenser, core2, decompress::Options,
+                        lzma_decompress_with_options,
                     };
+                    let mut memory = [0_u8; 18694];
+                    let mm = MemoryDispenser::new(&mut memory);
+                    let options = Options {
+                        memlimit: Some(1024),
+                        ..Default::default()
+                    };
+                    let compressed_data = [
+                        0x5d, 0x00, 0x00, 0x80, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                        0xff, 0x00, 0x30, 0xe9, 0x14, 0xb4, 0x91, 0x15, 0x7b, 0xd4, 0x77, 0xff,
+                        0xff, 0xf4, 0xcc, 0x80, 0x00,
+                    ];
+                    let mut decompressed_data = [0_u8; 16];
+                    lzma_decompress_with_options(
+                        &mm,
+                        &mut Cursor::new(&compressed_data),
+                        &mut Cursor::new(&mut decompressed_data[..]),
+                        &options,
+                    )
+                    .unwrap();
 
-                    nvm.lock(|n| {
-                        let mut se = match n.smart_eeprom().unwrap() {
-                            SmartEepromMode::Unlocked(se) => se,
-                            SmartEepromMode::Locked(se) => se.unlock(),
-                        };
-                        match action {
-                            Action::Read => {
-                                se.iter::<u8>().enumerate().skip(arg1).take(arg2).for_each(
-                                    |(i, v)| {
-                                        write!(
-                                            uart0_tx as &mut dyn Write<_, Error = _>,
-                                            "{:0x}: {:0x}\r\n",
-                                            i, v
-                                        )
-                                        .unwrap()
-                                    },
-                                )
-                            }
-                            Action::Write => {
-                                use core::convert::TryInto;
-                                uart0_tx.write_str("writing to eeprom..\r\n").unwrap();
-                                se.iter_mut::<u8>()
-                                    .skip(arg1)
-                                    .take(arg2)
-                                    .for_each(|v| *v = (arg2 & 0xff_usize).try_into().unwrap());
-                                uart0_tx.write_str("done\r\n").unwrap();
-                            }
-                        }
-                    });
+                    write!(uart0_tx, "{:#x?}", decompressed_data).unwrap();
 
                     b.clear();
                 })
