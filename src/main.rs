@@ -2,31 +2,6 @@
 #![no_main]
 #![no_std]
 
-macro_rules! clear_screen {
-    ($tx:tt) => {{
-    // Sequence:
-    // `<ESC>[2J` (clear screen)
-    // `<ESC>[H` (cursor to home position)
-    // `<ESC>` == 0x1b
-    $tx.write_str("\x1b").unwrap();
-    $tx.write_str("[2J").unwrap();
-    $tx.write_str("\x1b").unwrap();
-    $tx.write_str("[H").unwrap();
-    }}
-}
-
-macro_rules! clear_line {
-    ($tx:tt) => {{
-    // Sequence:
-    // `<ESC>[2K` (clear line)
-    // `\r`: CR
-    // `<ESC>` == 0x1b
-    $tx.write_str("\x1b").unwrap();
-    $tx.write_str("[2K").unwrap();
-    $tx.write_str("\r").unwrap();
-    }}
-}
-
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     unsafe {
@@ -43,23 +18,22 @@ use core::fmt::Write as _;
 
 use atsamd_hal::{
     clock::GenericClockController,
-    dsu::Dsu,
     gpio::v2::{Alternate, Pin, Pins, D, PA04, PA05},
     hal::serial::Write,
-    nvm::{smart_eeprom::SmartEepromMode, Nvm},
     prelude::*,
     sercom::v2::{uart::*, IoSet3, Sercom0},
     time::U32Ext,
 };
+use lzma_rs::decompress::*;
+use lzma_rs::*;
 use nb::block;
 
 use rtic::app;
+
 pub type Uart0Tx =
     Uart<Config<Pads<Sercom0, IoSet3, Pin<PA05, Alternate<D>>, Pin<PA04, Alternate<D>>>>, TxDuplex>;
 pub type Uart0Rx =
     Uart<Config<Pads<Sercom0, IoSet3, Pin<PA05, Alternate<D>>, Pin<PA04, Alternate<D>>>>, RxDuplex>;
-
-pub type String = heapless::String<256>;
 
 static mut UART0_TX: Option<Uart0Tx> = None;
 
@@ -70,13 +44,12 @@ mod app {
     #[shared]
     struct SharedResources {
         uart0_rx: Uart0Rx,
-        nvm: Nvm,
-        dsu: Dsu,
-        buffer: String,
     }
 
     #[local]
-    struct LocalResources {}
+    struct LocalResources {
+        stream: Stream<UartWriter, 4096, 8>,
+    }
 
     #[init]
     fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics()) {
@@ -96,18 +69,18 @@ mod app {
 
         let gclk0 = clocks.gclk0();
 
+        loop {}
+
         let mut uart0 = Config::new(
             &mclk,
             device.SERCOM0,
             Pads::default().rx(pins.pa05).tx(pins.pa04),
             clocks.sercom0_core(&gclk0).unwrap().freq(),
         )
-        .baud(115_200.hz(), BaudMode::Arithmetic(Oversampling::Bits16))
+        .baud((1 << 20).hz(), BaudMode::Arithmetic(Oversampling::Bits16))
         .enable();
         uart0.enable_interrupts(Flags::RXC);
 
-        let nvm = Nvm::new(device.NVMCTRL);
-        let dsu = Dsu::new(device.DSU, &device.PAC).unwrap();
         write!(
             &mut uart0 as &mut dyn Write<_, Error = _>,
             "RTIC booted!\r\n"
@@ -120,90 +93,42 @@ mod app {
             UART0_TX.replace(uart0_tx);
         }
 
+        let stream = Stream::new();
+
         (
-            SharedResources {
-                uart0_rx,
-                nvm,
-                dsu,
-                buffer: heapless::String::new(),
-            },
-            LocalResources {},
+            SharedResources { uart0_rx },
+            LocalResources { stream },
             init::Monotonics(),
         )
     }
 
-    #[derive(Debug)]
-    pub enum Action {
-        Read,
-        Write,
-    }
-
-    #[task(shared = [buffer, nvm], capacity = 10)]
+    #[task(local = [
+        stream
+    ], capacity = 5)]
     fn uart_handle(cx: uart_handle::Context, uart_data: UartCommand) {
-        let mut buffer = cx.shared.buffer;
-        let mut nvm = cx.shared.nvm;
-        let uart0_tx = unsafe { UART0_TX.as_mut().unwrap() as &mut dyn Write<_, Error = _> };
         match uart_data {
-            UartCommand::Return => {
-                buffer.lock(|b| {
-                    uart0_tx.write_str("\r\n").unwrap();
-                    // custom action start
-
-                    use core2::io::Cursor;
-                    use lzma_rs::{
-                        allocator::MemoryDispenser, core2, decompress::Options,
-                        lzma_decompress_with_options,
-                    };
-                    let mut memory = [0_u8; 18694];
-                    let mm = MemoryDispenser::new(&mut memory);
-                    let options = Options {
-                        memlimit: Some(1024),
-                        ..Default::default()
-                    };
-                    let compressed_data = [
-                        0x5d, 0x00, 0x00, 0x80, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-                        0xff, 0x00, 0x30, 0xe9, 0x14, 0xb4, 0x91, 0x15, 0x7b, 0xd4, 0x77, 0xff,
-                        0xff, 0xf4, 0xcc, 0x80, 0x00,
-                    ];
-                    let mut decompressed_data = [0_u8; 16];
-                    lzma_decompress_with_options(
-                        &mm,
-                        &mut Cursor::new(&compressed_data),
-                        &mut Cursor::new(&mut decompressed_data[..]),
-                        &options,
-                    )
+            UartCommand::Byte(byte) => {
+                cx.local
+                    .stream
+                    .write_all(&mut UartWriter {}, &[byte])
                     .unwrap();
 
-                    write!(uart0_tx, "{:#x?}", decompressed_data).unwrap();
-
-                    b.clear();
-                })
+                if let StreamStatus::Finished = cx.local.stream.get_stream_status() {
+                    cx.local.stream.finish(&mut UartWriter {}).unwrap();
+                }
             }
-            UartCommand::DataChar(character) => buffer.lock(|b| match b.push(character) {
-                Ok(_) => {
-                    clear_line!(uart0_tx);
-                    uart0_tx.write_str(b.as_str()).unwrap();
-                }
-                Err(_) => uart_handle::spawn(UartCommand::BufferFull).unwrap(),
-            }),
-            UartCommand::Backspace => buffer.lock(|b| {
-                if b.pop().is_some() {
-                    clear_line!(uart0_tx);
-                    uart0_tx.write_str(b.as_str()).unwrap();
-                }
-            }),
-            UartCommand::CtrlC => buffer.lock(|b| {
-                b.clear();
-                clear_screen!(uart0_tx);
-                uart0_tx.write_str(b.as_str()).unwrap();
-            }),
+
             // failure / not supported commands
-            other => write!(
-                uart0_tx as &mut dyn Write<_, Error = _>,
-                "error: {:?}\r\n",
-                other
-            )
-            .unwrap(),
+            other => {
+                let uart0_tx =
+                    unsafe { UART0_TX.as_mut().unwrap() as &mut dyn Write<_, Error = _> };
+                write!(
+                    uart0_tx as &mut dyn Write<_, Error = _>,
+                    "error: {:?}\r\n",
+                    other
+                )
+                .unwrap()
+            }
         }
     }
 
@@ -211,15 +136,25 @@ mod app {
     fn uart_interrupt(cx: uart_interrupt::Context) {
         let mut rx = cx.shared.uart0_rx;
         match rx.lock(|rx| block!(rx.read())) {
-            Ok(byte) => match byte as char {
-                '\u{7f}' => uart_handle::spawn(UartCommand::Backspace),
-                '\u{3}' => uart_handle::spawn(UartCommand::CtrlC),
-                '\r' => uart_handle::spawn(UartCommand::Return),
-                byte => uart_handle::spawn(UartCommand::DataChar(byte)),
-            },
+            Ok(byte) => uart_handle::spawn(UartCommand::Byte(byte)),
             Err(e) => uart_handle::spawn(UartCommand::ReadError(e)),
         }
         .unwrap();
+    }
+}
+
+pub struct UartWriter {}
+
+impl io::Write for UartWriter {
+    fn write(&mut self, data: &[u8]) -> Result<usize, lzma_rs::io::Error> {
+        let uart_tx = unsafe { UART0_TX.as_mut().unwrap() as &mut dyn Write<_, Error = _> };
+        for &value in data.iter() {
+            uart_tx.write(value).unwrap();
+        }
+        Ok(data.len())
+    }
+    fn flush(&mut self) -> Result<(), lzma_rs::io::Error> {
+        Ok(())
     }
 }
 
@@ -227,7 +162,7 @@ mod app {
 pub enum UartCommand {
     CtrlC,
     Backspace,
-    DataChar(char),
+    Byte(u8),
     Return,
     BufferFull,
     ReadError(Error),
