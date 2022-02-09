@@ -281,7 +281,6 @@ dependencies = [
  "byteorder",
  "core2",
  "crc",
- "heapless",
 ]
 
 [[package]]
