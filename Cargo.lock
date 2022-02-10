@@ -277,6 +277,7 @@ dependencies = [
 [[package]]
 name = "lzma-rs"
 version = "0.2.0"
+source = "git+https://github.com/vccggorski/lzma-no-std-rs.git#ae185e86f36efa19081692bb760699fa90accebf"
 dependencies = [
  "byteorder",
  "core2",
