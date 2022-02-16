@@ -26,16 +26,17 @@ name = "atsamd-demo"
 version = "0.1.0"
 dependencies = [
  "atsamd-hal",
+ "cfg-if",
  "cortex-m",
  "cortex-m-rtic",
  "dwt-systick-monotonic",
- "panic-halt",
+ "heapless",
 ]
 
 [[package]]
 name = "atsamd-hal"
-version = "0.13.0"
-source = "git+https://github.com/vcchtjader/atsamd.git?branch=clocking-api-v2#f828dd87e326344fec916df49863108f903ba3fd"
+version = "0.14.0"
+source = "git+https://github.com/vcchtjader/atsamd.git?branch=clocking-api-v2#fc570c2f8650143519a844e466bd93ff73913683"
 dependencies = [
  "atsame51n",
  "bitfield",
@@ -43,11 +44,10 @@ dependencies = [
  "cortex-m",
  "embedded-hal",
  "modular-bitfield",
- "nb 0.1.3",
+ "nb 1.0.0",
  "num-traits",
  "paste",
  "rand_core",
- "replace_with",
  "seq-macro",
  "typenum",
  "vcell",
@@ -57,9 +57,8 @@ dependencies = [
 [[package]]
 name = "atsame51n"
 version = "0.11.0"
-source = "git+https://github.com/vcchtjader/atsamd.git?branch=clocking-api-v2#f828dd87e326344fec916df49863108f903ba3fd"
+source = "git+https://github.com/vcchtjader/atsamd.git?branch=clocking-api-v2#fc570c2f8650143519a844e466bd93ff73913683"
 dependencies = [
- "bare-metal 0.2.5",
  "cortex-m",
  "cortex-m-rt",
  "vcell",
@@ -331,12 +330,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "panic-halt"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de96540e0ebde571dc55c73d60ef407c653844e6f9a1e2fdbd40c07b9252d812"
-
-[[package]]
 name = "paste"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -386,9 +379,9 @@ dependencies = [
 
 [[package]]
 name = "rand_core"
-version = "0.5.1"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90bde5296fc891b0cef12a6d03ddccc162ce7b2aff54160af9338f8d40df6d19"
+checksum = "d34f1408f55294453790c48b2f1ebbb1c5b4b7563eb1f418bcfcfdbb06ebb4e7"
 
 [[package]]
 name = "regex"
@@ -406,12 +399,6 @@ name = "regex-syntax"
 version = "0.6.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
-
-[[package]]
-name = "replace_with"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3a8614ee435691de62bcffcf4a66d91b3594bf1428a5722e79103249a095690"
 
 [[package]]
 name = "riscv"
@@ -490,9 +477,9 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "seq-macro"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a9f47faea3cad316faa914d013d24f471cd90bfca1a0c70f05a3f42c6441e99"
+checksum = "70d9841243dbc9928f5fed7946d2862292eebd823d96e13e556924d3db0120d2"
 
 [[package]]
 name = "spin"
