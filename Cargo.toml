@@ -10,6 +10,7 @@ edition = "2018"
 panic-halt = "0.2.0"
 cortex-m = "0.7.3"
 cortex-m-rtic = "1.0.0"
+dwt-systick-monotonic = "1.0"
 
 [dependencies.atsamd-hal]
 git = "https://github.com/vcchtjader/atsamd.git"

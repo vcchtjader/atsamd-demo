@@ -7,17 +7,28 @@ use panic_halt as _;
 use atsamd_hal::{
     clock::v2::{
         dpll::Dpll, gclk, gclk::Gclk1Div, gclkio::GclkOut, retrieve_clocks, xosc::*, xosc32k::*,
+        Source,
     },
     gpio::v2::Pins,
     time::U32Ext,
 };
 
+use dwt_systick_monotonic::fugit::TimerDurationU32;
+
+const SCHEDULE_FREQ: u32 = 100_000_000;
+
 use rtic::app;
 
-#[app(device = atsamd_hal::target_device, peripherals = true )]
+#[app(device = atsamd_hal::target_device, peripherals = true, dispatchers = [TCC1_MC1]
+ )]
 mod app {
-
     use super::*;
+    use dwt_systick_monotonic::*;
+    use rtic::Monotonic;
+
+    #[monotonic(binds = SysTick, default = true)]
+    type MyMono = DwtSystick<SCHEDULE_FREQ>;
+
     #[shared]
     struct SharedResources {}
 
@@ -25,7 +36,7 @@ mod app {
     struct LocalResources {}
 
     #[init]
-    fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics()) {
+    fn init(mut cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics()) {
         let mut device = cx.device;
 
         // Get the clocks & tokens
@@ -60,7 +71,7 @@ mod app {
         let (gclk0, _dfll, _dpll0) = gclk0.swap(dfll, dpll0);
 
         // Output Gclk0 on pin PB14
-        let (_gclk_out0, _gclk0) =
+        let (_gclk_out0, gclk0) =
             GclkOut::enable(tokens.gclk_io.gclk_out0, pins.pb14, gclk0, false);
 
         // Enable external 32k-oscillator
@@ -70,6 +81,30 @@ mod app {
         let xosc32k = xosc32k.activate_1k();
         let _xosc32k = xosc32k.activate_32k();
 
-        (SharedResources {}, LocalResources {}, init::Monotonics())
+        // Initialize the monotonic
+        let mono = DwtSystick::new(&mut cx.core.DCB, cx.core.DWT, cx.core.SYST, gclk0.freq().0);
+
+        let _ = periodic::spawn();
+
+        (
+            SharedResources {},
+            LocalResources {},
+            init::Monotonics(mono),
+        )
+    }
+
+    #[idle]
+    fn idle(_cx: idle::Context) -> ! {
+        loop {
+            cortex_m::asm::nop();
+        }
+    }
+
+    #[task]
+    fn periodic(_: periodic::Context) {
+        //let _now = monotonics::now();
+        //
+        // Should be 1 second
+        let _ = periodic::spawn_after(TimerDurationU32::from_ticks(SCHEDULE_FREQ));
     }
 }
