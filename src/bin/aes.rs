@@ -18,10 +18,7 @@ use atsamd_demo::{clear_line, clear_screen, uart::*};
 
 use core::fmt::Write as _;
 
-// Software Aes192
-//use aes::Aes192;
-
-use atsamd_hal::{
+use atsamd_hal_aes::{
     aes::*,
     clock::GenericClockController,
     dsu::Dsu,
@@ -37,7 +34,7 @@ use rtic::app;
 
 static mut UART0_TX: Option<Uart0Tx> = None;
 
-#[app(device = atsamd_hal::target_device, peripherals = true, dispatchers = [FREQM])]
+#[app(device = atsamd_hal_aes::target_device, peripherals = true, dispatchers = [FREQM])]
 mod app {
     use super::*;
 
@@ -219,7 +216,7 @@ mod app {
         use ctr::cipher::{NewCipher, StreamCipher, StreamCipherSeek};
 
         // `aes` crate provides AES block cipher implementation
-        type Aes128Ctr = ctr::Ctr128BE<atsamd_hal::aes::Aes128>;
+        type Aes128Ctr = ctr::Ctr128BE<atsamd_hal_aes::aes::Aes128>;
 
         let mut data = [1, 2, 3, 4, 5, 6, 7];
 

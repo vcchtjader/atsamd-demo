@@ -18,7 +18,7 @@ use atsamd_demo::{clear_line, clear_screen, uart::*};
 
 use core::fmt::Write as _;
 
-use atsamd_hal::{
+use atsamd_hal_clockv1::{
     clock::GenericClockController,
     dsu::Dsu,
     gpio::v2::Pins,
@@ -33,7 +33,7 @@ use rtic::app;
 
 static mut UART0_TX: Option<Uart0Tx> = None;
 
-#[app(device = atsamd_hal::target_device, peripherals = true, dispatchers = [FREQM])]
+#[app(device = atsamd_hal_clockv1::target_device, peripherals = true, dispatchers = [FREQM])]
 mod app {
     use super::*;
 

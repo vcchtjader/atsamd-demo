@@ -12,12 +12,15 @@ default-run = "demo"
 
 [[bin]]
 name = "demo"
+required-features = ["clockv2"]
 
 [[bin]]
 name = "demov1"
+required-features = ["clockv1"]
 
 [[bin]]
 name = "aes"
+required-features = ["hal-aes"]
 
 [dependencies]
 cortex-m = "0.7.3"
@@ -33,15 +36,35 @@ cipher = "0.3.0"
 ctr = "0.8.0"
 cmac = "0.6.0"
 
-
-[dependencies.atsamd-hal]
-git = "https://github.com/vcchtjader/atsamd.git"
-branch = "clocking-api-v2"
-#branch = "aes"
-#path = "../atsamd-bradley/hal/"
+[dependencies.atsamd-hal-clockv1]
+package = "atsamd-hal"
+optional = true
 version = "0.14.0"
 features = ["same51n-rt", "unproven"]
+
+[dependencies.atsamd-hal]
+package = "atsamd-hal"
+optional = true
+git = "https://github.com/vcchtjader/atsamd.git"
+branch = "clocking-api-v2"
+version = "0.14.0"
+features = ["same51n-rt", "unproven"]
+
+[dependencies.atsamd-hal-aes]
+package = "atsamd-hal"
+optional = true
+git = "https://github.com/vcchtjader/atsamd.git"
+branch = "aes"
+#path = "../atsamd-bradley/hal/"
+version = "0.14.0"
+features = ["same51n-rt", "unproven", "enable_unsafe_aes_newblock_cipher"]
 
 [profile.release]
 debug = true
 lto = true
+
+[features]
+default = ["clockv2"]
+clockv1 = ["atsamd-hal-clockv1"]
+clockv2 = ["atsamd-hal"]
+hal-aes = ["atsamd-hal-aes"]
