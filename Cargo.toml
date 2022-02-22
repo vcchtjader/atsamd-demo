@@ -22,6 +22,10 @@ required-features = ["clockv1"]
 name = "aes"
 required-features = ["hal-aes"]
 
+[[bin]]
+name = "icm"
+required-features = ["clockv1"]
+
 [dependencies]
 cortex-m = "0.7.3"
 cortex-m-rtic = "1.0.0"
