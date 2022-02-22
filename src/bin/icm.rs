@@ -102,7 +102,7 @@ mod app {
         let gclk0 = clocks.gclk0();
 
         let mut uart0 = Config::new(
-            &mclk,
+            mclk,
             device.SERCOM0,
             Pads::default().rx(pins.pa05).tx(pins.pa04),
             clocks.sercom0_core(&gclk0).unwrap().freq(),
