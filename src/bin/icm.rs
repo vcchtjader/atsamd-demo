@@ -145,12 +145,15 @@ mod app {
         // Automatic Switch to Compare is disabled
         icm.set_ascd(false);
 
+        // Test setting user initial hash value
+        icm.set_user_initial_hash_value(&MESSAGE_SHA1_RES);
+
         // Region Descriptor create a new one with intention of
         // replacing ICM_REGION_DESC
         let mut icm_region_desc = Regions::default();
 
         // Get the interface for Region0 and enable monitoring
-        let icm_region0: Region<Region0> = icm.enable_region();
+        let icm_region0: Region<Region0> = icm.get_region_handle();
         icm_region0.enable_monitoring();
 
         // Setup desired interrupts
@@ -180,7 +183,7 @@ mod app {
         icm_region_desc.region0.rcfg.set_algo(icm_algorithm::SHA1);
 
         // Get the interface for region1
-        let icm_region1 = icm.enable_region1();
+        let icm_region1 = icm.get_region1_handle();
 
         // Enable region monitoring
         icm_region1.enable_monitoring();
@@ -203,7 +206,7 @@ mod app {
         icm_region_desc.region1.rcfg.set_algo(icm_algorithm::SHA1);
 
         // Get the interface for region2
-        let icm_region2 = icm.enable_region2();
+        let icm_region2 = icm.get_region2_handle();
 
         // Enable region monitoring
         icm_region2.enable_monitoring();
@@ -226,7 +229,7 @@ mod app {
         icm_region_desc.region2.rcfg.set_algo(icm_algorithm::SHA224);
 
         // Get the interface for region3
-        let icm_region3 = icm.enable_region3();
+        let icm_region3 = icm.get_region3_handle();
 
         // Enable region monitoring
         icm_region3.enable_monitoring();
