@@ -43,7 +43,7 @@ cmac = "0.6.0"
 [dependencies.atsamd-hal-clockv1]
 package = "atsamd-hal"
 optional = true
-version = "0.14.0"
+version = "0.15.0"
 features = ["same51n-rt", "unproven"]
 
 [dependencies.atsamd-hal]
@@ -51,7 +51,7 @@ package = "atsamd-hal"
 optional = true
 git = "https://github.com/vcchtjader/atsamd.git"
 branch = "clocking-api-v2"
-version = "0.14.0"
+version = "0.15.0"
 features = ["same51n-rt", "unproven"]
 
 [dependencies.atsamd-hal-aes]
@@ -60,7 +60,7 @@ optional = true
 git = "https://github.com/vcchtjader/atsamd.git"
 branch = "aes"
 #path = "../atsamd-bradley/hal/"
-version = "0.14.0"
+version = "0.15.0"
 features = ["same51n-rt", "unproven", "enable_unsafe_aes_newblock_cipher"]
 
 [profile.release]

@@ -20,7 +20,7 @@ use core::fmt::Write as _;
 
 use atsamd_hal_clockv1::{
     clock::GenericClockController,
-    gpio::v2::Pins,
+    gpio::Pins,
     hal::serial::Write,
     icm::*,
     nvm::{smart_eeprom::SmartEepromMode, Nvm},
@@ -59,7 +59,7 @@ static mut ICM_REGION_DESC: Regions = Regions::default();
 
 static mut UART0_TX: Option<Uart0Tx> = None;
 
-#[app(device = atsamd_hal_clockv1::target_device, peripherals = true, dispatchers = [FREQM])]
+#[app(device = atsamd_hal_clockv1::pac, peripherals = true, dispatchers = [FREQM])]
 mod app {
     use super::*;
 

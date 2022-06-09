@@ -9,11 +9,11 @@ use rtic::app;
 
 use atsamd_hal::{
     clock::GenericClockController,
-    gpio::v2::pin::{self, *},
+    gpio::pin::{self, *},
     prelude::*,
 };
 
-#[app(device = atsamd_hal::target_device,
+#[app(device = atsamd_hal::pac,
     peripherals = true,
     dispatchers = [ TCC0_MC0, TCC1_MC0, TCC1_MC1],
     )]

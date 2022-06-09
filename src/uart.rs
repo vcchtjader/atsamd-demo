@@ -3,22 +3,22 @@
 cfg_if::cfg_if! {
     if #[cfg(feature = "clockv1")] {
         pub use atsamd_hal_clockv1::{
-            gpio::v2::{Alternate, Pin, Pins, D, PA04, PA05},
-            hal::serial::Write,
-            sercom::v2::{uart::*, IoSet3, Sercom0},
+            gpio::{Alternate, Pin, Pins, D, PA04, PA05},
+            ehal::serial::Write,
+            sercom::{uart::*, IoSet3, Sercom0},
         };
 
     } else if #[cfg(feature = "hal-aes")] {
         pub use atsamd_hal_aes::{
-            gpio::v2::{Alternate, Pin, Pins, D, PA04, PA05},
-            hal::serial::Write,
-            sercom::v2::{uart::*, IoSet3, Sercom0},
+            gpio::{Alternate, Pin, Pins, D, PA04, PA05},
+            ehal::serial::Write,
+            sercom::{uart::*, IoSet3, Sercom0},
         };
     } else {
         pub use atsamd_hal::{
-            gpio::v2::{Alternate, Pin, Pins, D, PA04, PA05},
-            hal::serial::Write,
-            sercom::v2::{uart::*, IoSet3, Sercom0},
+            gpio::{Alternate, Pin, Pins, D, PA04, PA05},
+            ehal::serial::Write,
+            sercom::{uart::*, IoSet3, Sercom0},
         };
     }
 }

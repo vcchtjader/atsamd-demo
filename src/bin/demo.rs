@@ -12,7 +12,7 @@ use atsamd_hal::{
     clock::v2::{
         dpll::Dpll, gclk, gclk::Gclk1Div, gclkio::GclkOut, por_state, xosc::*, xosc32k::*, Source,
     },
-    gpio::v2::Pins,
+    gpio::Pins,
     time::U32Ext,
 };
 
@@ -22,7 +22,7 @@ const SCHEDULE_FREQ: u32 = 100_000_000;
 
 use rtic::app;
 
-#[app(device = atsamd_hal::target_device, peripherals = true, dispatchers = [TCC1_MC1]
+#[app(device = atsamd_hal::pac, peripherals = true, dispatchers = [TCC1_MC1]
  )]
 mod app {
     use super::*;
