@@ -17,26 +17,21 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 use core::fmt::Write as _;
 
 use atsamd_hal::{
-    typelevel::NoneT,
     clock::*,
-    gpio::v2::{Alternate, Pin, Pins, D, PA04, PA08, PA09},
-    hal::serial::Write,
+    ehal::serial::Write,
+    gpio::{Alternate, Pin, Pins, D, PA04},
     pukcc::*,
-    sercom::{
-        v2::{uart::*, IoSet3, Sercom0},
-        I2CMaster2,
-    },
+    sercom::{uart::*, IoSet3, Sercom0},
     time::U32Ext,
+    typelevel::NoneT,
 };
 
 use rtic::app;
-pub type Uart0 =
-    Uart<Config<Pads<Sercom0, IoSet3, NoneT, Pin<PA04, Alternate<D>>>>, Tx>;
-pub type I2C = I2CMaster2<Pin<PA09, Alternate<D>>, Pin<PA08, Alternate<D>>>;
+pub type Uart0 = Uart<Config<Pads<Sercom0, IoSet3, NoneT, Pin<PA04, Alternate<D>>>>, Tx>;
 
 static mut UART: Option<Uart0> = None;
 
-#[app(device = atsamd_hal::target_device, peripherals = true )]
+#[app(device = atsamd_hal::pac, peripherals = true )]
 mod app {
     use super::*;
 
@@ -103,12 +98,14 @@ mod app {
         for (i, (k, reference_signature)) in K_SIGNATURE_PAIRS.iter().enumerate() {
             let i = i + 1;
             let mut generated_signature = [0_u8; 64];
-            let are_signatures_same = match pukcc.zp_ecdsa_sign::<curves::Nist256p>(
-                &mut generated_signature,
-                &SIGNED_HASH,
-                &PRIVATE_KEY,
-                k,
-            ) {
+            let are_signatures_same = match unsafe {
+                pukcc.zp_ecdsa_sign_with_raw_k::<curves::Nist256p>(
+                    &mut generated_signature,
+                    &SIGNED_HASH,
+                    &PRIVATE_KEY,
+                    k,
+                )
+            } {
                 Ok(_) => generated_signature
                     .iter()
                     .zip(reference_signature.iter())
